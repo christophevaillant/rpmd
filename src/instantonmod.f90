@@ -1,11 +1,7 @@
 module instantonmod
-  use mcmod_mass
+  use potential
+  use general
   implicit none
-  double precision, parameter::    pi=3.14159265358979d0
-  double precision::               beta, betan, UMtilde
-  double precision, allocatable::  well1(:,:), well2(:,:), mass(:)
-  character, allocatable::         label(:)
-  logical::                        fixedends
 
   public :: QsortC
   private :: Partition
@@ -21,14 +17,14 @@ contains
 
     UM=0.0d0
     do i=1, N-1, 1
-       UM=UM+ V(x(i,:,:))
+       UM=UM+ pot(x(i,:,:))
        do j=1, ndim
           do k=1, natom
              UM=UM+ (0.5d0*mass(k)/betan**2)*(x(i+1,j,k)-x(i,j,k))**2
           end do
        end do
     end do
-    UM=UM+ V(a(:,:))+ V(b(:,:))+ V(x(N,:,:))
+    UM=UM+ pot(a(:,:))+ pot(b(:,:))+ pot(x(N,:,:))
     if (fixedends) then
        do j=1, ndim
           do k=1, natom
@@ -541,117 +537,117 @@ subroutine centreofmass(x, com)
   return
 end subroutine centreofmass
 
-  subroutine instanton(xtilde,a,b)
-    implicit none
-    integer::                        iprint, m, iflag, mp,idof, maxiter
-    integer::                        i, lp, count, iw, j,k, dof
-    double precision::               eps2, xtol, gtol, stpmin, stpmax
-    double precision::               f, xtilde(:,:,:), xtemp(ndim,natom)
-    double precision::               factr, a(:,:),b(:,:), com(ndim)
-    double precision, allocatable::  fprime(:,:,:), work(:), fprimework(:)
-    double precision, allocatable::  lb(:), ub(:), dsave(:), xwork(:)
-    integer, allocatable::           nbd(:), iwork(:), isave(:)
-    logical::                        lsave(4)
-    character(len=60)::              task, csave
+  ! subroutine instanton(xtilde,a,b)
+  !   implicit none
+  !   integer::                        iprint, m, iflag, mp,idof, maxiter
+  !   integer::                        i, lp, count, iw, j,k, dof
+  !   double precision::               eps2, xtol, gtol, stpmin, stpmax
+  !   double precision::               f, xtilde(:,:,:), xtemp(ndim,natom)
+  !   double precision::               factr, a(:,:),b(:,:), com(ndim)
+  !   double precision, allocatable::  fprime(:,:,:), work(:), fprimework(:)
+  !   double precision, allocatable::  lb(:), ub(:), dsave(:), xwork(:)
+  !   integer, allocatable::           nbd(:), iwork(:), isave(:)
+  !   logical::                        lsave(4)
+  !   character(len=60)::              task, csave
 
-    dof= n*ndim*natom
-    allocate(lb(dof), ub(dof),fprime(n,ndim,natom), nbd(dof))
-    allocate(fprimework(dof), xwork(dof))
-    ! call centreofmass(a, com)
-    ! do i=1,ndim
-    !    do j=1,natom
-    !       a(i,j)= a(i,j)- com(i)
-    !    end do
-    ! end do
-    ! call centreofmass(b, com)
-    ! do i=1,ndim
-    !    do j=1,natom
-    !       b(i,j)= b(i,j)- com(i)
-    !    end do
-    ! end do 
-    do i=1, n, 1
-       ! call centreofmass(xtilde(i,:,:), com)
-       do j=1,ndim
-          do k=1,natom
-             ! xtilde(i,j,k)= xtilde(i,j,k) - com(j)
-             idof= ((k-1)*ndim + j -1)*n +i
-                lb(idof)= a(j,k)
-                ub(idof)= a(j,k)
-                nbd(idof)=0
-          end do
-       end do
-    end do
+  !   dof= n*ndim*natom
+  !   allocate(lb(dof), ub(dof),fprime(n,ndim,natom), nbd(dof))
+  !   allocate(fprimework(dof), xwork(dof))
+  !   ! call centreofmass(a, com)
+  !   ! do i=1,ndim
+  !   !    do j=1,natom
+  !   !       a(i,j)= a(i,j)- com(i)
+  !   !    end do
+  !   ! end do
+  !   ! call centreofmass(b, com)
+  !   ! do i=1,ndim
+  !   !    do j=1,natom
+  !   !       b(i,j)= b(i,j)- com(i)
+  !   !    end do
+  !   ! end do 
+  !   do i=1, n, 1
+  !      ! call centreofmass(xtilde(i,:,:), com)
+  !      do j=1,ndim
+  !         do k=1,natom
+  !            ! xtilde(i,j,k)= xtilde(i,j,k) - com(j)
+  !            idof= ((k-1)*ndim + j -1)*n +i
+  !               lb(idof)= a(j,k)
+  !               ub(idof)= a(j,k)
+  !               nbd(idof)=0
+  !         end do
+  !      end do
+  !   end do
       
-    !------------------------
-    !perform minimization
-    task='START'
-    m=8
-    iprint=-1
-    xtol= 1d-8
-    iw=dof*(2*m+5) + 11*m**2 + 8*m
-    allocate(work(iw), iwork(3*dof), isave(44), dsave(29))
-    iflag=0
-    eps2= 1.0d-6 !gradient convergence
-    factr=1.0d5
-    maxiter=40
-    f= UM(xtilde,a,b)
-    call UMprime(xtilde,a,b,fprime)
-    count=0
-    do while( task(1:2).eq.'FG'.or.task.eq.'NEW_X'.or. &
-         task.eq.'START')
-       count=count+1
-       xwork=reshape(xtilde,(/dof/))
-       fprimework= reshape(fprime,(/dof/))
-       call setulb(dof,m,xwork,lb,ub,nbd,f,fprimework,factr,eps2,work&
-            ,iwork,task,iprint, csave,lsave,isave,dsave,maxiter)
-       if (task(1:2) .eq. 'FG') then
-          xtilde= reshape(xwork,(/n,ndim,natom/))
-          f= UM(xtilde,a,b)
-          call UMprime(xtilde,a,b,fprime)
-       end if
-    end do
-    if (task(1:5) .eq. "ERROR" .or. task(1:4) .eq. "ABNO") then
-       write(*,*) "Error:"
-       write(*,*) task
-    end if
+  !   !------------------------
+  !   !perform minimization
+  !   task='START'
+  !   m=8
+  !   iprint=-1
+  !   xtol= 1d-8
+  !   iw=dof*(2*m+5) + 11*m**2 + 8*m
+  !   allocate(work(iw), iwork(3*dof), isave(44), dsave(29))
+  !   iflag=0
+  !   eps2= 1.0d-6 !gradient convergence
+  !   factr=1.0d5
+  !   maxiter=40
+  !   f= UM(xtilde,a,b)
+  !   call UMprime(xtilde,a,b,fprime)
+  !   count=0
+  !   do while( task(1:2).eq.'FG'.or.task.eq.'NEW_X'.or. &
+  !        task.eq.'START')
+  !      count=count+1
+  !      xwork=reshape(xtilde,(/dof/))
+  !      fprimework= reshape(fprime,(/dof/))
+  !      call setulb(dof,m,xwork,lb,ub,nbd,f,fprimework,factr,eps2,work&
+  !           ,iwork,task,iprint, csave,lsave,isave,dsave,maxiter)
+  !      if (task(1:2) .eq. 'FG') then
+  !         xtilde= reshape(xwork,(/n,ndim,natom/))
+  !         f= UM(xtilde,a,b)
+  !         call UMprime(xtilde,a,b,fprime)
+  !      end if
+  !   end do
+  !   if (task(1:5) .eq. "ERROR" .or. task(1:4) .eq. "ABNO") then
+  !      write(*,*) "Error:"
+  !      write(*,*) task
+  !   end if
 
-    deallocate(work, lb, ub, fprime, fprimework,xwork)
-    deallocate(iwork, nbd, isave, dsave)
+  !   deallocate(work, lb, ub, fprime, fprimework,xwork)
+  !   deallocate(iwork, nbd, isave, dsave)
 
-    return
-  end subroutine instanton
+  !   return
+  ! end subroutine instanton
 
-  !---------------------------------------------------------------------
-  !---------------------------------------------------------------------
-  subroutine detJ(x, etasquared)
-  character::                      jobz, range, uplo
-  double precision::               vl, vu, abstol
-  double precision::               x(:,:,:), etasquared(:)
-  integer::                        nout, ldz, lwork, liwork, info,i
-  integer,allocatable::            isuppz(:), iwork(:)
-  double precision, allocatable::  work(:), z(:,:), H(:,:)
-  ! !get diagonal hessian
-  jobz='N'
-  range='A'
-  uplo='U'
-  abstol=1.0d-8
-  lwork= 2*totdof
-  liwork= 1
-  info=0
-  ldz=totdof
-  vl=0.0d0
-  vu=0.0d0
-  nout=0
-  allocate(work(lwork), iwork(liwork), H(ndof+1,totdof))
-  H=0.0d0
-  etasquared=0.0d0
-  call UMhessian(x,H)
-  write(*,*) "Hessian is cooked."
+  ! !---------------------------------------------------------------------
+  ! !---------------------------------------------------------------------
+  ! subroutine detJ(x, etasquared)
+  ! character::                      jobz, range, uplo
+  ! double precision::               vl, vu, abstol
+  ! double precision::               x(:,:,:), etasquared(:)
+  ! integer::                        nout, ldz, lwork, liwork, info,i
+  ! integer,allocatable::            isuppz(:), iwork(:)
+  ! double precision, allocatable::  work(:), z(:,:), H(:,:)
+  ! ! !get diagonal hessian
+  ! jobz='N'
+  ! range='A'
+  ! uplo='U'
+  ! abstol=1.0d-8
+  ! lwork= 2*totdof
+  ! liwork= 1
+  ! info=0
+  ! ldz=totdof
+  ! vl=0.0d0
+  ! vu=0.0d0
+  ! nout=0
+  ! allocate(work(lwork), iwork(liwork), H(ndof+1,totdof))
+  ! H=0.0d0
+  ! etasquared=0.0d0
+  ! call UMhessian(x,H)
+  ! write(*,*) "Hessian is cooked."
 
-  call DSBEVD('N', 'L', totdof, ndof, H, ndof+1, etasquared, z, 1, work, lwork, iwork, liwork, info)
-  deallocate(work, iwork, H)
-  return
-  end subroutine detJ
+  ! call DSBEVD('N', 'L', totdof, ndof, H, ndof+1, etasquared, z, 1, work, lwork, iwork, liwork, info)
+  ! deallocate(work, iwork, H)
+  ! return
+  ! end subroutine detJ
 
   function findmiddle(x1,x2,lampath,path, splinepath)
     integer::          jmax,j

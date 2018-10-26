@@ -2,31 +2,28 @@ program rpmd
   use potential
   use verletint
   use estimators
+  use instantonmod
   use MKL_VSL_TYPE
   use MKL_VSL
 
   implicit none
   !general variables
   integer::                        i, j, count,k,jj, nrep
-  integer::                        thermostat,dofi
-  double precision::               dHdr, answer,sigmaA
-  double precision, allocatable::  origin(:), wellinit(:,:), vgrad(:,:)
-  double precision, allocatable::  x(:,:,:), vel(:), tempv(:), tempp(:), initpath(:,:)
-  double precision, allocatable::  p(:,:,:), xi(:), dbdxi(:,:,:), Vpath(:)
-  double precision, allocatable::  path(:,:,:), lampath(:), splinepath(:), y(:,:,:)
-  integer::                        ndofrb, dummy
-  character::                      dummylabel, dummystr(28)
-  !gauss-legendre variables
-  integer::                        nintegral,ii, time1, time2, imax, irate
-  double precision, allocatable::  weights(:), xint(:,:,:), integrand(:), sigma(:)
+  integer::                        i1,i2,j1,j2,idof1,idof2
+  integer::                        thermostat,idof,ii
+  integer::                        time1, time2,irate, imax
+  double precision::               answer,sigmaA, weight, totalweight
+  double precision, allocatable::  x(:,:,:), p(:,:,:), totaltcf(:,:)
+  double precision, allocatable::  hesstemp(:,:,:,:)
   !lapack variables
   character::                      jobz, range, uplo
   double precision::               vl, vu, abstol
   integer::                        nout, ldz, lwork, liwork, info
   integer,allocatable::            isuppz(:), iwork(:)
-  double precision, allocatable::  diag(:), work(:), z(:,:)
+  double precision, allocatable::  work(:), z(:,:)
   namelist /MCDATA/ n, beta, NMC, noutput,dt, iprint,imin,tau,&
        nrep, use_mkl, thermostat, ndim, natom, xunit,gamma
+       
   !-------------------------
   !Set default system parameters then read in namelist
   iprint=.false.
@@ -35,7 +32,6 @@ program rpmd
   NMC= (5e6)
   Noutput= 1e5
   dt= 1d-3
-  nintegral= 5
   nrep=1
   thermostat=1
   ndim=3
@@ -45,73 +41,92 @@ program rpmd
   imin=0
   tau=1.0d0
   gamma=1.0d0
+  nestim=1
 
   read(5, nml=MCDATA)
-  betan= beta/dble(n+1)
+  betan= beta/dble(n)
+  omegan= 1.0/betan
   call system_clock(time1, irate, imax)
   write(*,*)"Running with parameters (in a.u.):"
   write(*,*) "beta, betan, n=", beta, betan, n
   write(*,*) "NMC, Noutput, dt=", NMC, Noutput, dt
-  write(*,*) "with integration points", nintegral
-  write(*,*) "tau=", tau
-  write(*,*) "gamma=", gamma
   if (thermostat .eq. 1) then
+     write(*,*) "tau=", tau
      write(*,*) "Running with Andersen thermostat"
   else if (thermostat .eq. 2) then
+     write(*,*) "tau=", tau
+     write(*,*) "gamma=", gamma
      write(*,*) "Running with Langevin thermostat"
   end if
   call V_init()
-
+  ndof= ndim*natom
+  totdof= ndof*n
+  
   !-------------------------
   !-------------------------
-  !Start loop over integration points
-  allocate(integrand(nintegral), sigma(nintegral))
-  integrand(:)=0.0d0
-  call random_seed()
-  allocate(x(n,ndim,natom), vel(n),p(n,ndim,natom))
-  allocate(tempp(n), tempv(n))
-  allocate(transmatrix(n,n),beadmass(natom,n),beadvec(n,ndof), lam(n))
-  call alloc_nm(1)
-  sigma(ii)=0.0d0
-  integrand(ii)=0.0d0
-  do jj=1, nrep
-     call init_nm(path(1,:,:),xint(ii,:,:))
-     call init_path(path(1,:,:), xint(ii,:,:), x, p)
-     if (thermostat .eq. 1) then
-        call propagate_pimd_nm(x,p, path(1,:,:),xint(ii,:,:),dbdxi(ii,:,:),dHdr)
-     else if (thermostat .eq. 2) then
-        call propagate_pimd_pile(x,p, path(1,:,:),xint(ii,:,:), dbdxi(ii,:,:),dHdr)
-     else if (thermostat .eq. 3) then
-        call propagate_pimd_higher(x,p, path(1,:,:),xint(ii,:,:),dbdxi(ii,:,:),dHdr)
-     else
-        write(*,*) "Incorrect thermostat option."
-        stop
-     end if
-     integrand(ii)=integrand(ii) + dHdr/(dble(nrep)*betan**2)
-     sigma(ii)= sigma(ii)+ (dHdr/betan**2)**2
+  !Read in the transition state and work out normal
+  allocate(transition(ndim, natom), normalvec(ndim,natom))
+  open(20, file="transition.dat")
+  do i=1, natom
+     read(20, *) (transition(j,i), j=1, ndim)
   end do
-  sigma(ii)= sigma(ii)/dble(nrep)
-  sigma(ii)= sigma(ii) - integrand(ii)**2
-  ! write(*,*)"-----------------"
-  write(*,*) ii, xi(ii), integrand(ii), sqrt(sigma(ii))
-  ! write(*,*)"-----------------"
-  call free_nm()
-  deallocate(x, vel,p, tempv, tempp)
-  answer= 0.0d0
-  sigmaA=0.0d0
-
-  do i=1, nintegral
-     if (integrand(i) .eq. integrand(i)) &
-          answer= answer+ weights(i)*integrand(i)
-     sigmaA= sigmaA + sigma(i)*weights(i)**2
+  if (xunit .eq. 2) transition(:,:)= transition(:,:)/0.529177d0
+     
+  allocate(hess(ndof,ndof), hesstemp(ndim, natom, ndim, natom))
+  call Vdoubleprime(transition, hesstemp)
+  do i1=1, natom
+     do j1=1, ndim
+        do i2= 1, natom
+           do j2= 1,ndim
+              idof1= (j1-1)*ndim + i1
+              idof2= (j2-1)*ndim + i2
+              hess(idof1,idof2)= hesstemp(j1,i1,j2,i2)
+           end do
+        end do
+     end do
   end do
+  lwork=1+ 6*ndof + 2*ndof**2
+  liwork= 3 + 5*ndof
+  info=0
+  allocate(work(lwork), iwork(liwork))
+  allocate(transfreqs(ndof))
+  call dsyevd('V', 'U', ndof, hess, ndof, transfreqs,work,lwork,iwork,&
+            liwork,info)
+  do i=1, natom
+     do j=1, ndim
+        idof= (j1-1)*ndim + i1
+        normalvec(j,i)= hess(1,idof)
+     end do
+  end do
+              
+  !-------------------------
+  !-------------------------
+  !Start converging TCFs
+  
+  call alloc_nm(0)
+  call init_ring() !allocates ring polymer stuff
+  call init_estimators() !allocates estimator stuff
 
-  finalI= exp(-answer*betan)
-  write(*,*) "beta, betan, n=", beta, betan, n
-  write(*,*) "final Delta A=", answer , "+/-", sqrt(sigmaA)/sqrt(dble(nrep))
-  write(*,*) "q/q0=", finalI, betan*sqrt(sigmaA)*finalI/sqrt(dble(nrep))
-  write(*,*) "q0/q=", 1.0d0/finalI, betan*sqrt(sigmaA)/(finalI*sqrt(dble(nrep)))
-  call system_clock(time2, irate, imax)
-  write(*,*) "Ran in", dble(time2-time1)/dble(irate), "s"
-  deallocate(path, xtilde)
+  allocate(x(n,ndim,natom),p(n,ndim,natom))
+  allocate(totaltcf(nestim,ntime), tcf(nestim,ntime))
+  totaltcf(:,:)=0.0d0
+  totalweight=0.0d0
+  do ii=1, nrep
+     call init_path(x,p, weight)
+     totalweight= totalweight+weight
+     call ring_rpmd_pile(x,p,tcf)
+     do i=1, nestim
+        do j=1,ntime
+           totaltcf(i,j)= totaltcf(i,j) + tcf(i,j)*weight
+        end do
+     end do
+  end do
+  
+  totaltcf(:,:)= totaltcf(:,:)/totalweight
+  open(100, file="timecorrelation.dat")
+  do i=1, ntime
+     write(100,*) dt*dble(i*noutput)/dble(nmc), (tcf(j,i),j=1,nestim)
+  end do
+  deallocate(x,p, totaltcf)
+  deallocate(transition, normalvec)
 end program rpmd

@@ -1,8 +1,7 @@
 module potential
+  use general
   implicit none
   double precision::               V0, Vheight, x0
-  integer,parameter::              atom1=1, atom2=2, atom3=3
-  integer::                        n, ndim, ndof, natom, xunit, totdof
 
 contains
   subroutine V_init()
@@ -11,16 +10,16 @@ contains
     return
   end subroutine V_init
   !---------------------------------------------------------------------
-  function V(x)
+  function pot(x)
     implicit none
-    double precision::     v, x(:,:)
+    double precision::     pot, x(:,:)
     integer::              i,j
 
     !sum only there to make arrays fit
-    V= sum(Vheight*((x/x0)**2 -1.0d0)**2) 
+    pot= Vheight/cosh(x(1,1)/x0)**2
 
     return
-  end function V
+  end function POT
 
   !---------------------------------------------------------------------
   subroutine Vprime(x, grad)
@@ -28,8 +27,7 @@ contains
     integer::              i,j
     double precision::     grad(:,:), x(:,:)
 
-    grad(:,:)=((x(:,:)/x0)**2 -1.0)
-    grad(:,:)= grad(:,:)*4.0*Vheight*x(:,:)/x0**2
+    grad(:,:)= -2.0d0*Vheight*(tanh(x(:,:)/x0)/cosh(x(:,:)/x0)**2)/x0
 
     return
   end subroutine Vprime
@@ -39,21 +37,10 @@ contains
     implicit none
     double precision::     hess(:,:,:,:), x(:,:), dummy1, eps
     integer::              i, j
-    double precision, allocatable::     gradplus(:, :), gradminus(:, :)
 
-    eps=1d-4
-    allocate(gradplus(ndim, natom), gradminus(ndim, natom))
-    do i= 1, ndim
-       do j= 1, natom
-          x(i,j)= x(i,j) + eps
-          call Vprime(x, gradplus)
-          x(i,j)= x(i,j) - 2.0d0*eps
-          call Vprime(x, gradminus)
-          x(i,j)= x(i,j) + eps
-          hess(i,j,:,:)= (gradplus(:,:)-gradminus(:,:))/(2.0d0*eps)          
-       end do
-    end do
-    deallocate(gradplus, gradminus)
+    hess(1,1,1,1)= Vheight*(4.0d0*(tanh(x(1,1)/x0)/cosh(x(1,1)/x0))**2 -&
+         2.0d0/cosh(x(1,1)/x0)**4)/x0**2
+
     return
   end subroutine Vdoubleprime
 
