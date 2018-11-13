@@ -21,7 +21,7 @@ module general
   double precision::               beta, betan, UMtilde, omegan
   double precision, allocatable::  well1(:,:), well2(:,:), mass(:)
   character, allocatable::         label(:)
-  logical::                        fixedends
+  logical::                        fixedends, outputtcf, outputfbar
 
 contains
 
@@ -107,10 +107,25 @@ contains
     implicit none
     double precision, intent(in)::  xprop(:)
     double precision, intent(out):: qprop(:)
-    integer::                 i,j
+    integer::                 i,j,k
 
-    call dsymv('T', n, 1.0d0,transmatrix, n, xprop,1,0.0d0, qprop,1)
-
+    call dgemv('N', n,n, 1.0d0,transmatrix, n, xprop,1,0.0d0, qprop,1)
+    ! qprop(1)= centroid(xprop)
+    ! do i=2, n-2,2
+    !    k=i/2
+    !    qprop(i)=0.0d0
+    !    qprop(i+1)=0.0d0
+    !    do j=1,n
+    !       qprop(i)= qprop(i)+sqrt(2.0d0/dble(n))*xprop(j)*sin(2.0*j*k*pi/dble(N))
+    !       qprop(i+1)= qprop(i+1)+sqrt(2.0d0/dble(n))*xprop(j)*cos(2.0*j*k*pi/dble(N))
+    !    end do
+    ! end do
+    ! if (mod(n,2) .eq. 0) then
+    !    qprop(n/2)=0.0d0
+    !    do j=1,n
+    !       qprop(n/2)= qprop(n/2)+ ((-1)**j)*xprop(j)/sqrt(dble(N))
+    !    end do
+    ! end if
     return
   end subroutine ring_transform_forward
   !-----------------------------------------------------
@@ -122,8 +137,23 @@ contains
     double precision, intent(in)::  qprop(:)
     integer::                 i,j
 
-    call dsymv('U', n, 1.0d0, transmatrix, n, qprop,1,0.0d0, xprop,1)
-
+    call dgemv('T', n, n,1.0d0, transmatrix, n, qprop,1,0.0d0, xprop,1)
+    ! qprop(1)= centroid(xprop)
+    ! do i=2, n-2,2
+    !    k=i/2
+    !    qprop(i)=0.0d0
+    !    qprop(i+1)=0.0d0
+    !    do j=1,n
+    !       qprop(i)= qprop(i)+sqrt(2.0d0/dble(n))*xprop(j)*sin(2.0*j*k*pi/dble(N))
+    !       qprop(i+1)= qprop(i+1)+sqrt(2.0d0/dble(n))*xprop(j)*cos(2.0*j*k*pi/dble(N))
+    !    end do
+    ! end do
+    ! if (mod(n,2) .eq. 0) then
+    !    qprop(n/2)=0.0d0
+    !    do j=1,n
+    !       qprop(n/2)= qprop(n/2)+ ((-1)**j)*xprop(j)/sqrt(dble(N))
+    !    end do
+    ! end if
     return
   end subroutine ring_transform_backward
 

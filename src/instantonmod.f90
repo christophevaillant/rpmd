@@ -13,7 +13,9 @@ contains
   function UM(x,a,b)
     implicit none
     integer::            i,j,k
-    double precision::   x(:,:,:), UM,a(:,:),b(:,:)
+    double precision, intent(in)::   x(:,:,:)
+    double precision::  UM
+    double precision, intent(in), optional::  a(:,:),b(:,:)
 
     UM=0.0d0
     do i=1, N-1, 1
@@ -24,14 +26,21 @@ contains
           end do
        end do
     end do
-    UM=UM+ pot(a(:,:))+ pot(b(:,:))+ pot(x(N,:,:))
+    UM=UM+ pot(x(N,:,:))
     if (fixedends) then
+       UM=UM+ pot(a(:,:))+ pot(b(:,:))
        do j=1, ndim
           do k=1, natom
              UM=UM+ (0.5d0*mass(k)/betan**2)*(x(1,j,k)-a(j,k))**2
              UM=UM+ (0.5d0*mass(k)/betan**2)*(b(j,k)-x(N,j,k))**2
           end do
        end do
+    else if (ring) then
+       do j=1, ndim
+          do k=1, natom
+             UM=UM+ (0.5d0*mass(k)/betan**2)*(x(1,j,k)-x(n,j,k))**2
+          end do
+       end do       
     end if
 
     return
@@ -51,12 +60,16 @@ contains
              if (i.eq.1) then
                 if (fixedends) then
                    answer(1,j,k)=mass(k)*(2.0*x(1,j,k) - a(j,k) - x(2,j,k))/betan**2
+                else if (ring) then
+                   answer(1,j,k)=mass(k)*(2.0*x(1,j,k) - x(2,j,k)- x(N,j,k))/betan**2                   
                 else
                    answer(1,j,k)=mass(k)*(x(1,j,k) - x(2,j,k))/betan**2                   
                 end if
              else if (i.eq.N) then
                 if (fixedends) then
                    answer(N,j,k)=mass(k)*(2.0*x(N,j,k) - x(N-1,j,k) - b(j,k))/betan**2
+                else if (ring) then
+                   answer(N,j,k)=mass(k)*(2.0*x(N,j,k) - x(N-1,j,k)- x(1,j,k))/betan**2
                 else
                    answer(N,j,k)=mass(k)*(x(N,j,k) - x(N-1,j,k))/betan**2
                 end if

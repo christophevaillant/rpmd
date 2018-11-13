@@ -13,11 +13,16 @@ MODDIR= ../modules
 #List the object files and their dependencies
 #Define some variables with common files
 PREPOTFILES= $(OBJDIR)/nr_fft.o $(OBJDIR)/general.o
+.SECONDEXPANSION:
 POSTPOTFILES= $(OBJDIR)/instantonmod.o $(OBJDIR)/verletmodule.o
+
 RATEFILES= $(OBJDIR)/estimators_rates.o
 
 #1D eckart barrier :
 ECKARTFILES= $(OBJDIR)/potential_eckart.o
+
+rpmd_eckart_rate: POSTPOTFILES= $(OBJDIR)/instantonmod.o $(OBJDIR)/estimators_rates.o $(OBJDIR)/verletmodule.o
+
 
 ###################################################################################
 #Compilation commands for object files
@@ -33,9 +38,8 @@ $(OBJDIR)/%.o: %.f90
 
 ################################
 #eckart barrier potential:
-rpmd_eckart_rate: $(PREPOTFILES) $(ECKARTFILES) $(RATEFILES) $(POSTPOTFILES) $(OBJDIR)/rpmd.o
-	$(FC) $(FFLAGS) $(PREPOTFILES) $(ECKARTFILES) $(RATEFILES) $(POSTPOTFILES) $(OBJDIR)/rpmd.o -o $(BUILDDIR)/$@ $(FLIBS_SEQ)
-
+rpmd_eckart_rate: $(PREPOTFILES) $(ECKARTFILES) $$(POSTPOTFILES) $(OBJDIR)/rpmd.o
+	$(FC) $(FFLAGS) $(PREPOTFILES) $(ECKARTFILES) $(POSTPOTFILES) $(OBJDIR)/rpmd.o -o $(BUILDDIR)/$@ $(FLIBS_SEQ)
 
 ###################################################################################
 #Rules for cleanup

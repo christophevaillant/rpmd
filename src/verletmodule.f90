@@ -89,98 +89,23 @@ contains
   !-----------------------------------------------------
   !routine taking a step in time using normal mode verlet algorithm
   !from ceriotti et al 2010 paper.
-  subroutine time_step(x, v)
+  !-----------------------------------------------------
+  !-----------------------------------------------------
+  !routine taking a step in time using normal mode verlet algorithm
+  !from ceriotti et al 2010 paper.
+  subroutine time_step(xprop, vprop)
     implicit none
-    double precision, intent(inout):: x(:,:,:), v(:,:,:)
-    double precision, allocatable::   newv(:,:,:), newx(:,:,:),force(:,:)
-    double precision, allocatable::   q(:,:,:), p(:,:,:)
-    integer::             i,j,k,dofi
-    double precision::    omegak
+    double precision, intent(inout)::    xprop(:,:,:), vprop(:,:,:)
+    double precision, allocatable::  force(:,:,:), pip(:,:,:)
 
-    allocate(newv(n,ndim,natom), newx(n,ndim,natom),force(ndim,natom))
-    allocate(q(n,ndim,natom),p(n,ndim,natom))
-    !-------------
-    !step 1
-    do i=1,n
-       call Vprime(x(i,:,:),force)
-       do j=1,ndim
-          do k=1,natom
-             newv(i,j,k)= v(i,j,k) - force(j,k)*dt
-             if (newv(i,j,k) .ne. newv(i,j,k)) then
-                write(*,*) "NaN in pot propagation"
-                stop
-             end if
-          end do
-       end do
-    end do
-    !-------------
-    !step 2
-    do i=1,ndim
-       do j=1,natom
-          if (.not. use_mkl) then
-             dofi= (j-1)*ndim+i
-             if (ring) then
-                call ring_transform_forward(newv(:,i,j), p(:,i,j))
-                call ring_transform_forward(x(:,i,j), q(:,i,j))
-             else
-                call linear_transform_forward(newv(:,i,j), p(:,i,j), 0)
-                call linear_transform_forward(x(:,i,j), q(:,i,j), dofi)
-             end if
-          else
-             if (ring) then
-                call ring_transform_forward_nr(newv(:,i,j), p(:,i,j))
-                call ring_transform_forward_nr(x(:,i,j), q(:,i,j))
-             else
-                call linear_transform_forward_nr(newv(:,i,j), p(:,i,j), 0)
-                call linear_transform_forward_nr(x(:,i,j), q(:,i,j), dofi)
-             end if
-          end if
-       end do
-    end do
-    !-------------
-    !step 3
-    do i=1, n
-       do j=1,ndim
-          do k=1,natom
-             omegak= sqrt(mass(k)/beadmass(k,i))*lam(i)
-             newv(i,j,k)= p(i,j,k)*cos(dt*omegak) - &
-                  q(i,j,k)*omegak*beadmass(k,i)*sin(omegak*dt)
-             newx(i,j,k)= q(i,j,k)*cos(dt*omegak) + &
-                  p(i,j,k)*sin(omegak*dt)/(omegak*beadmass(k,i))
-             if (newv(i,j,k) .ne. newv(i,j,k)) then
-                write(*,*) "NaN in 1st NM propagation"
-                stop
-             end if
-          end do
-       end do
-    end do
-    !-------------
-    !step 4
-    do i=1,ndim
-       do j=1,natom
-          dofi=(j-1)*ndim + i
-          if (.not. use_mkl) then
-             if (ring) then
-                call ring_transform_backward(newv(:,i,j), v(:,i,j))
-                call ring_transform_backward(newx(:,i,j), x(:,i,j))
-             else
-                call linear_transform_backward(newv(:,i,j), v(:,i,j), 0)
-                call linear_transform_backward(newx(:,i,j), x(:,i,j),dofi)
-             end if
-          else
-             if (ring) then
-                call ring_transform_backward_nr(newv(:,i,j), v(:,i,j))
-                call ring_transform_backward_nr(newx(:,i,j), x(:,i,j))
-             else
-                call linear_transform_backward_nr(newv(:,i,j), v(:,i,j),0)
-                call linear_transform_backward_nr(newx(:,i,j), x(:,i,j),dofi)
-             end if
-          end if
-       end do
-    end do
-
-    deallocate(newv, newx,force)
-    deallocate(q,p)
+    allocate(force(n, ndim, natom), pip(n, ndim, natom))
+    ! write(*,*) "pot 1:"
+    ! write(*,*) "----------"
+    call step_v(0.5d0*dt, xprop, vprop, force, .true.)
+    ! write(*,*) "nm:"
+    call step_nm(dt,xprop,vprop ,.true.)
+    call step_v(0.5d0*dt, xprop, vprop, force, .true.)
+    deallocate(force)
     return
   end subroutine time_step
   !-----------------------------------------------------
@@ -223,24 +148,25 @@ contains
     integer::             i,j,k,l, dofi
 
     ring=.true.
-
-    do i=1, (n-2)/2
-       if (i.eq.1) then
-          k=0
-          lam(i)= 0.0d0
-          do j=1, natom
-             beadmass(j,i)=mass(j)
-          end do
-       do l=1,n
-          transmatrix(i,l)= 1.0d0/sqrt(dble(n))
-       end do
-       else
-          k= i-1
+    !------------
+    !take care of the centroid mode
+    k=0
+    lam(1)= 0.0d0
+    do j=1, natom
+       beadmass(j,1)=mass(j)
+    end do
+    do l=1,n
+       transmatrix(1,l)= 1.0d0/sqrt(dble(n))
+    end do
+    ! write(*,*) 0,0, sum(transmatrix(1,:)**2)
+    !do all the other modes in steps of two
+    do i=2, n-2,2
+          k= (i/2)
           lam(i)= 2.0d0*sin(dble(k)*pi/dble(n))/betan
-          lam(i+1)= 2.0d0*sin(dble(k)*pi/dble(n))/betan
+          lam(i+1)=2.0d0*sin(dble(k)*pi/dble(n))/betan
           do j=1, natom
-             beadmass(j,i)=mass(j)*(lam(i)*tau)**2
-             beadmass(j,i+1)=mass(j)*(lam(i)*tau)**2
+             beadmass(j,i)=mass(j)!*(lam(i)*tau)**2
+             beadmass(j,i+1)=mass(j)!*(lam(i)*tau)**2
           end do
        do l=1,n
           transmatrix(i,l)= sqrt(2.0d0/dble(n))*&
@@ -252,18 +178,25 @@ contains
              stop
           end if
        end do
-       end if
+       ! write(*,*) i,k, sum(transmatrix(i,:)**2)
+       ! write(*,*) i,-k, sum(transmatrix(i+1,:)**2)
     end do
     if (mod(n,2).eq.0) then
-       i=n/2
+       i=n
+       k=i/2
        lam(i)=2.0d0/betan
        do j=1,natom
-          beadmass(j,i)=mass(j)*(lam(i)*tau)**2
+          beadmass(j,i)=mass(j)!*(lam(i)*tau)**2
        end do
        do l=1,n
           transmatrix(i,l)= ((-1.0d0)**l)/sqrt(dble(n))
        end do
+    ! write(*,*) i,k, sum(transmatrix(i,:)**2)
     end if
+    ! write(*,*) transmatrix
+    ! write(*,*) "------------------"
+    ! write(*,*) lam
+    ! write(*,*) "bloop"
 
   end subroutine init_ring
   !-----------------------------------------------------
@@ -325,15 +258,18 @@ contains
   subroutine time_step_ffpile(xprop, vprop)
     implicit none
     double precision, intent(inout)::    xprop(:,:,:), vprop(:,:,:)
-    double precision, allocatable::  force(:,:,:)
+    double precision, allocatable::  force(:,:,:), pip(:,:,:)
 
-    allocate(force(n, ndim, natom))
-
+    allocate(force(n, ndim, natom), pip(n, ndim, natom))
+    ! write(*,*) "pot 1:"
+    ! write(*,*) "----------"
     call step_v(0.5d0*dt, xprop, vprop, force, .true.)
+    ! write(*,*) "thermo:"
     call step_langevin(vprop)
+    ! write(*,*) "pot 2:"
     call step_v(0.5d0*dt, xprop, vprop, force,.false.)
+    ! write(*,*) "nm:"
     call step_nm(dt,xprop,vprop ,.true.)
-
     deallocate(force)
     return
   end subroutine time_step_ffpile
@@ -371,15 +307,20 @@ contains
              end if
           end do
        end do
-
     do i=1, n
        do j=1,ndim
           do k=1,natom
-             omegak= sqrt(mass(k)/beadmass(k,i))*lam(i)
-             newpi(i,j,k)= pip(i,j,k)*cos(time*omegak) - &
-                  q(i,j,k)*omegak*beadmass(k,i)*sin(omegak*time)
-             q(i,j,k)= q(i,j,k)*cos(time*omegak) + &
-                  pip(i,j,k)*sin(omegak*time)/(omegak*beadmass(k,i))
+             if (i.eq.1 .and. ring) then
+                newpi(i,j,k)=pip(i,j,k)
+                q(i,j,k)= q(i,j,k) + &
+                     pip(i,j,k)*time/beadmass(k,i)
+             else
+                omegak= sqrt(mass(k)/beadmass(k,i))*lam(i)
+                newpi(i,j,k)= pip(i,j,k)*cos(time*omegak) - &
+                     q(i,j,k)*omegak*beadmass(k,i)*sin(omegak*time)
+                q(i,j,k)= q(i,j,k)*cos(time*omegak) + &
+                     pip(i,j,k)*sin(omegak*time)/(omegak*beadmass(k,i))
+             end if
              if (newpi(i,j,k) .ne. newpi(i,j,k)) then
                 write(*,*) "NaN in 1st NM propagation"
                 stop
@@ -387,26 +328,25 @@ contains
           end do
        end do
     end do
-    pip(:,:,:)=newpi(:,:,:)
     
     if (transform) then
        do i=1,ndim
           do j=1,natom
-             dofi=(j-1)*ndim + i
+             dofi=calcidof(i,j)
              if (.not. use_mkl) then
                 if (ring) then
-                   call ring_transform_backward(pip(:,i,j), p(:,i,j))
+                   call ring_transform_backward(newpi(:,i,j), p(:,i,j))
                    call ring_transform_backward(q(:,i,j), x(:,i,j))
                 else
-                   call linear_transform_backward(pip(:,i,j), p(:,i,j), 0)
+                   call linear_transform_backward(newpi(:,i,j), p(:,i,j), 0)
                    call linear_transform_backward(q(:,i,j), x(:,i,j),dofi)
                 end if
              else
                 if (ring) then
-                   call ring_transform_backward_nr(pip(:,i,j), p(:,i,j))
+                   call ring_transform_backward_nr(newpi(:,i,j), p(:,i,j))
                    call ring_transform_backward_nr(q(:,i,j), x(:,i,j))
                 else
-                   call linear_transform_backward_nr(pip(:,i,j), p(:,i,j),0)
+                   call linear_transform_backward_nr(newpi(:,i,j), p(:,i,j),0)
                    call linear_transform_backward_nr(q(:,i,j), x(:,i,j),dofi)
                 end if
              end if
@@ -414,7 +354,7 @@ contains
        end do
     else
        x(:,:,:)= q(:,:,:)
-       p(:,:,:)= pip(:,:,:)
+       p(:,:,:)= newpi(:,:,:)
     end if
 
        
@@ -456,7 +396,7 @@ contains
     errcode_normal = vdrnggaussian(rmethod_normal,stream_normal,n*ndof,pprop,0.0d0,1.0d0)
     do i=1,ndim
        do j=1,natom
-          dofi= (j-1)*ndim+i
+          dofi= calcidof(i,j)
           if (.not. use_mkl) then
              if (ring) then
                 call ring_transform_forward(vprop(:,i,j), p(:,i,j))
@@ -470,10 +410,12 @@ contains
                 call linear_transform_forward_nr(vprop(:,i,j), p(:,i,j), 0)
              end if
           end if
+          ! write(*,*) p(:,i,j)
           do k=1,n
              vprop(k,i,j)= p(k,i,j) !seems silly, but it isn't!
              p(k,i,j)= (c1(j,k)**2)*p(k,i,j) + &
                   sqrt(beadmass(j,k)/betan)*c2(j,k)*sqrt(1.0+c1(j,k)**2)*pprop((dofi-1)*n +k)
+             ! write(*,*)k, c1(j,k), c2(j,k)
           end do
        end do
     end do
@@ -482,7 +424,6 @@ contains
           p(k,:,j)= norm2(p(k,:,j))*vprop(k,:,j)/norm2(vprop(k,:,j)) !see, not so silly!
        end do
     end do
-    
     do i=1,ndim
        do j=1,natom
           dofi= (j-1)*ndim +i
@@ -507,6 +448,33 @@ contains
   !-----------------------------------------------------
   !-----------------------------------------------------
   !main function for propagating a MD trajectory with Langevin thermostat
+  subroutine ring_rpmd(xprop,vprop,tcf)
+    implicit none
+    double precision, intent(inout)::  xprop(:,:,:), vprop(:,:,:)
+    double precision, intent(out):: tcf(:,:)
+    double precision, allocatable::  x0(:,:,:)
+    double precision::              contr,randno, Eold,p0
+    integer::              i,j,k,count, time1,time2,imax, irate, jj
+    integer (kind=4)::     rkick(1)
+
+    ring=.true.
+    allocate(x0(n,ndim,natom))
+    x0(:,:,:)=xprop(:,:,:)
+    p0= centroid(vprop(:,1,1))
+    do i=1, NMC, 1
+       call time_step(xprop, vprop)
+       if (mod(i,Noutput) .eq. 0 .and. i .gt. imin) then !count .ge. Noutput
+          call estimator(xprop, vprop, tcf(1,i/Noutput))
+          if (iprint) write(*,*) 100*dble(i)/dble(NMC), tcf(1,i/Noutput), centroid(xprop(:,1,1))
+       end if
+    end do
+    deallocate(x0)
+    return
+  end subroutine ring_rpmd
+
+  !-----------------------------------------------------
+  !-----------------------------------------------------
+  !main function for propagating a MD trajectory with Langevin thermostat
   subroutine ring_rpmd_pile(xprop,vprop,tcf)
     implicit none
     double precision, intent(inout)::  xprop(:,:,:), vprop(:,:,:)
@@ -519,17 +487,20 @@ contains
     allocate(c1(natom,n), c2(natom,n))
     do i=1,n
        do j=1,natom
+          ! write(*,*) i, lam(i), mass(j), beadmass(j,i)
+
           c1(j,i)= exp(-gamma*dt*lam(i)*sqrt(mass(j)/beadmass(j,i)))!
           c2(j,i)= sqrt(1.0d0- c1(j,i)**2)
        end do
     end do
     do i=1, NMC, 1
-       count=count+1
+       ! write(*,*)"---------"
+       ! write(*,*) i, xprop
        call time_step_ffpile(xprop, vprop)
-       if (count .ge. Noutput .and. i .gt. imin) then
-          count=0
+       ! write(*,*) xprop
+       if (mod(i,Noutput) .eq. 0 .and. i .gt. imin) then !count .ge. Noutput
           call estimator(xprop, vprop, tcf(1,i/Noutput))
-          if (iprint) write(*,*) 100*dble(i)/dble(NMC), tcf(1,i/Noutput)
+          if (iprint) write(*,*) 100*dble(i)/dble(NMC), tcf(1,i/Noutput), centroid(xprop(:,1,1))
        end if
     end do
     deallocate(c1, c2)

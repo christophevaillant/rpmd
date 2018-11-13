@@ -5,8 +5,9 @@ module potential
 
 contains
   subroutine V_init()
-    Vheight=1.0d0
-    x0=1.0d0
+    Vheight=1.56185d-2
+    x0=0.734d0
+    V0=Vheight
     return
   end subroutine V_init
   !---------------------------------------------------------------------
@@ -16,7 +17,7 @@ contains
     integer::              i,j
 
     !sum only there to make arrays fit
-    pot= Vheight/cosh(x(1,1)/x0)**2
+    pot= Vheight/cosh(x(1,1)/x0)**2 !- V0
 
     return
   end function POT
@@ -43,5 +44,24 @@ contains
 
     return
   end subroutine Vdoubleprime
+
+  !---------------------------------------------------------------------
+  subroutine  massweightedhess(x,hess)
+    implicit none
+    double precision::     hess(:,:,:,:), x(:,:), dummy1, eps
+    integer::              i, j
+
+    call Vdoubleprime(x,hess)
+    hess(1,1,1,1)=hess(1,1,1,1)/mass(1)
+    return
+  end subroutine Massweightedhess
+
+
+  function calcpartition()
+    implicit none
+    double precision:: calcpartition
+
+    calcpartition= sqrt(mass(1)/(2.0d0*pi*beta))
+  end function calcpartition
 
 end module potential
