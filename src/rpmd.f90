@@ -11,7 +11,7 @@ program rpmd
   !general variables
   integer::                        i, j, count,k,jj, nrep
   integer::                        i1,i2,j1,j2,idof1,idof2
-  integer::                        thermostat,idof,ii
+  integer::                        idof,ii
   integer::                        time1, time2,irate, imax
   double precision::               answer,sigmaA, weight
   double precision::               tcf0, totalweight,s, ringpot
@@ -26,7 +26,7 @@ program rpmd
   namelist /MCDATA/ n, beta, NMC, noutput,dt, iprint,imin,tau,&
        nrep, use_fft, thermostat, ndim, natom, xunit,gamma, &
        outputtcf, outputfbar
-       
+
   !-------------------------
   !Set default system parameters then read in namelist
   iprint=.false.
@@ -45,6 +45,7 @@ program rpmd
   tau=1.0d0
   gamma=1.0d0
   nestim=1
+  ring=.true.
 
   read(5, nml=MCDATA)
   betan= beta/dble(n)
@@ -64,7 +65,7 @@ program rpmd
   call V_init()
   ndof= ndim*natom
   totdof= ndof*n
-  
+
   allocate(mass(natom))
   open(15,file="mass.dat")
   do i=1,natom
@@ -82,7 +83,7 @@ program rpmd
   close(20)
   if (xunit .eq. 2) transition(:,:)= transition(:,:)/0.529177d0
 
-     
+
   allocate(hess(ndof,ndof), hesstemp(ndim, natom, ndim, natom))
   call massweightedhess(transition, hesstemp)
   do i1=1, natom
@@ -102,7 +103,7 @@ program rpmd
   allocate(work(lwork), iwork(liwork))
   allocate(transfreqs(ndof))
   call dsyevd('V', 'U', ndof, hess, ndof, transfreqs,work,lwork,iwork,&
-            liwork,info)
+       liwork,info)
   deallocate(work, iwork)
   ! write(*,*) hess
   do i=1, natom
@@ -120,57 +121,56 @@ program rpmd
   !-------------------------
   !-------------------------
   !Start converging TCFs
-  
-  ring=.true.
+
   call alloc_nm(0)
-  call init_ring() !allocates ring polymer stuff
+  call init_nm() !allocates ring polymer stuff
   call init_estimators() !allocates estimator stuff
 
-  ! write(*,*) lam
   allocate(x(n,ndim,natom),p(n,ndim,natom))
   allocate(totaltcf(nestim,ntime), tcf(nestim,ntime))
-  allocate(p0(n,ndim,natom),q0(n,ndim,natom))
+  if (outputfbar) allocate(p0(n,ndim,natom),q0(n,ndim,natom))
   totaltcf(:,:)=0.0d0
   totalweight=0.0d0
+
+  !--------------------
+  !Main loop
   do ii=1, nrep
      tcf(:,:)=0.0d0
      call init_path(x,p, tcf0)
-     p0(:,:,:)=p(:,:,:)
-     q0(:,:,:)=x(:,:,:)
-     ! write(*,*) ii,tcf0, centroid(p0(:,1,1))/mass(1)
-     if (thermostat.eq.0) then
-        call ring_rpmd(x,p,tcf)
-     else if (thermostat.eq.1) then
-        write(*,*) "Whoops, will be implemented soon"
-     else if (thermostat.eq.2) then
-        call ring_rpmd_pile(x,p,tcf)
+     if (outputfbar) then
+        p0(:,:,:)=p(:,:,:)
+        q0(:,:,:)=x(:,:,:)
      end if
+     call propagator(x,p,tcf)
      do i=1, nestim
         do j=1,ntime
            totaltcf(i,j)= totaltcf(i,j) + tcf(i,j)*tcf0
         end do
      end do
-    allocate(v(ndim,natom))
-    do i=1,ndim
-       do j=1,natom
-          v(i,j)= centroid(x(:,i,j)) - transition(i,j)
-       end do
-    end do
-    s= dot_product(reshape(v,(/ndof/)), reshape(normalvec,(/ndof/)))
-    if (s .gt. 0) then
-       ringpot= 0.0
-       do k=1,n
-          ringpot= ringpot+ pot(q0(k,:,:))
-       end do
-       if (outputfbar) write(200,*) centroid(p0(:,1,1))/mass(1)*exp(-betan*ringpot),&
-            p(1,1,1)*exp(-betan*ringpot)/mass(1)
+     !Optional output of f1 and fbar to check stats
+     if (outputfbar) then
+        allocate(v(ndim,natom))
+        do i=1,ndim
+           do j=1,natom
+              v(i,j)= centroid(x(:,i,j)) - transition(i,j)
+           end do
+        end do
+        s= dot_product(reshape(v,(/ndof/)), reshape(normalvec,(/ndof/)))
+        if (s .gt. 0) then
+           ringpot= 0.0
+           do k=1,n
+              ringpot= ringpot+ pot(q0(k,:,:))
+           end do
+           if (outputfbar) write(200,*) centroid(p0(:,1,1))/mass(1)*exp(-betan*ringpot),&
+                p(1,1,1)*exp(-betan*ringpot)/mass(1)
 
-    end if
-    deallocate(v)
-
-
+        end if
+        deallocate(v)
+     end if
   end do
-  
+
+  !------------------------------------
+  !Finalize and write out
   totaltcf(:,:)= totaltcf(:,:)/dble(nrep)
   write(*,*) "Reactant partition function:", calcpartition()
   write(*,*) "Final rate:", totaltcf(1,ntime)
@@ -183,6 +183,8 @@ program rpmd
   end if
   call free_nm()
   call finalize_estimators()
+  call system_clock(time2, irate, imax)
+  write(*,*) "Time taken (s)=",dble(time2-time1)/dble(irate)
   deallocate(mass, hess, hesstemp)
   deallocate(x,p, totaltcf, tcf)
   deallocate(transition, normalvec, transfreqs)
