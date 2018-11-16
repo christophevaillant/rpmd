@@ -1,7 +1,7 @@
 module nr_fft
   implicit none
 
-  public:: sinft
+  public:: sinft, four1, realft
 
   private
   !Module of subroutines from Numerical Recipes
@@ -250,11 +250,10 @@ contains
     y(2:n:2)=y1
   end subroutine sinft
 
-  SUBROUTINE realft(data,isign,zdata)
+  SUBROUTINE realft(data,isign)
     IMPLICIT NONE
     REAL(DP), DIMENSION(:), INTENT(INOUT) :: data
     INTEGER(I4B), INTENT(IN) :: isign
-    COMPLEX(DPC), DIMENSION(:), OPTIONAL, TARGET :: zdata
     INTEGER(I4B) :: n,ndum,nh,nq
     COMPLEX(DPC), DIMENSION(size(data)/4) :: w
     COMPLEX(DPC), DIMENSION(size(data)/4-1) :: h1,h2
@@ -265,14 +264,8 @@ contains
     call assert(iand(n,n-1)==0, 'n must be a power of 2 in realft_dp')
     nh=n/2
     nq=n/4
-    if (present(zdata)) then
-       ndum=assert_eq(n/2,size(zdata),'realft_dp')
-       cdata=>zdata
-       if (isign == 1) cdata=cmplx(data(1:n-1:2),data(2:n:2),kind=dpc)
-    else
-       allocate(cdata(n/2))
-       cdata=cmplx(data(1:n-1:2),data(2:n:2),kind=dpc)
-    end if
+    allocate(cdata(n/2))
+    cdata=cmplx(data(1:n-1:2),data(2:n:2),kind=dpc)
     if (isign == 1) then
        d2=-0.5_dp
        call four1(cdata,+1)
@@ -292,17 +285,53 @@ contains
        cdata(1)=cmplx(d1*(real(z)+aimag(z)),d1*(real(z)-aimag(z)),kind=dpc)
        call four1(cdata,-1)
     end if
-    if (present(zdata)) then
-       if (isign /= 1) then
-          data(1:n-1:2)=real(cdata)
-          data(2:n:2)=aimag(cdata)
-       end if
+    data(1:n-1:2)=real(cdata)
+    data(2:n:2)=aimag(cdata)
+    deallocate(cdata)
+  END SUBROUTINE realft
+
+  SUBROUTINE realft_cpl(data,isign,zdata)
+    IMPLICIT NONE
+    REAL(DP), DIMENSION(:), INTENT(INOUT) :: data
+    INTEGER(I4B), INTENT(IN) :: isign
+    COMPLEX(DPC), DIMENSION(:),TARGET:: zdata
+    INTEGER(I4B) :: n,ndum,nh,nq
+    COMPLEX(DPC), DIMENSION(size(data)/4) :: w
+    COMPLEX(DPC), DIMENSION(size(data)/4-1) :: h1,h2
+    COMPLEX(DPC), DIMENSION(:), POINTER :: cdata
+    COMPLEX(DPC) :: z
+    REAL(DP) :: d1=0.5_dp,d2
+    n=size(data)
+    call assert(iand(n,n-1)==0, 'n must be a power of 2 in realft_dp')
+    nh=n/2
+    nq=n/4
+    ndum=assert_eq(n/2,size(zdata),'realft_dp')
+    cdata=>zdata
+    if (isign == 1) cdata=cmplx(data(1:n-1:2),data(2:n:2),kind=dpc)
+    if (isign == 1) then
+       d2=-0.5_dp
+       call four1(cdata,+1)
     else
+       d2=0.5_dp
+    end if
+    w=zroots_unity(sign(n,isign),n/4)
+    w=cmplx(-aimag(w),real(w),kind=dpc)
+    h1=d1*(cdata(2:nq)+conjg(cdata(nh:nq+2:-1)))
+    h2=d2*(cdata(2:nq)-conjg(cdata(nh:nq+2:-1)))
+    cdata(2:nq)=h1+w(2:nq)*h2
+    cdata(nh:nq+2:-1)=conjg(h1-w(2:nq)*h2)
+    z=cdata(1)
+    if (isign == 1) then
+       cdata(1)=cmplx(real(z)+aimag(z),real(z)-aimag(z),kind=dpc)
+    else
+       cdata(1)=cmplx(d1*(real(z)+aimag(z)),d1*(real(z)-aimag(z)),kind=dpc)
+       call four1(cdata,-1)
+    end if
+    if (isign /= 1) then
        data(1:n-1:2)=real(cdata)
        data(2:n:2)=aimag(cdata)
-       deallocate(cdata)
     end if
-  END SUBROUTINE realft
+  END SUBROUTINE realft_cpl
 
   SUBROUTINE four1(data,isign)
     IMPLICIT NONE
@@ -459,5 +488,6 @@ contains
          end do
       end if
     END FUNCTION arth_i
+
 
 end module nr_fft

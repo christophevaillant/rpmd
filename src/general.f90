@@ -2,7 +2,8 @@ include 'mkl_vsl.fi'
 module general
   use MKL_VSL_TYPE
   use MKL_VSL
-  use nr_fft
+  use MKL_DFTI
+  ! use nr_fft
 
   implicit none
 
@@ -10,19 +11,21 @@ module general
   integer::                         errcode_poisson, rmethod_poisson
   integer::                         brng_poisson, seed_poisson
   type (vsl_stream_state)::         stream_poisson,stream_normal
+  type(dfti_descriptor), pointer :: fft_handle
   integer::                         errcode_normal, rmethod_normal, brng_normal
-  integer::                         seed_normal
+  integer::                         seed_normal, lensav, lenwork
   integer::                         n, ndim, ndof, natom, xunit, totdof
-  double precision, allocatable::   tcf(:,:)
+  double precision, allocatable::   tcf(:,:), work(:)
   double precision,allocatable::    transmatrix(:,:),beadvec(:,:)
-  double precision,allocatable::    beadmass(:,:), lam(:)
-  logical::                         ring
+  double precision,allocatable::    beadmass(:,:), lam(:), wsave(:)
+  logical::                         ring, use_fft
   double precision, parameter::    pi=3.14159265358979d0
   double precision::               beta, betan, UMtilde, omegan
   double precision, allocatable::  well1(:,:), well2(:,:), mass(:)
   character, allocatable::         label(:)
   logical::                        fixedends, outputtcf, outputfbar
 
+  private:: wsave, lensav, work
 contains
 
   !-----------------------------------------------------
@@ -31,10 +34,28 @@ contains
 
   subroutine alloc_nm(iproc)
     implicit none
-    integer::    itime, irate, imax
+    integer::    itime, irate, imax, ier
     integer, intent(in):: iproc
 
     allocate(transmatrix(n,n), beadmass(natom,n), lam(n))
+    if (use_fft) then
+       ! lensav= n + int(log(dble(n))/log(2.0)) +4
+       ! write(*,*) "Lensav:",lensav
+       ! allocate(work(n), wsave(lensav))
+       ! call rfft1i(n, wsave, lensav,ier)
+       ! if (ier.gt.0) then
+       !    write(*,*) "Error initializing FFTs"
+       !    stop
+       ! else
+       !    write(*,*) "FFTs allocated"
+       ! end if
+       ier= DftiCreateDescriptor(fft_handle, dfti_double,&
+            dfti_real, 1, n)
+       ier= dftisetvalue(fft_handle, dfti_packed_format, dfti_pack_format)
+       ier= dftisetvalue(fft_handle, dfti_backward_scale, 1.00d0/sqrt(dble(n)))
+       ier= dftisetvalue(fft_handle, dfti_forward_scale, 1.00d0/sqrt(dble(n)))
+       ier= DftiCommitDescriptor(fft_handle)
+    end if
     if (.not. ring) allocate(beadvec(n,ndof))
     call system_clock(itime,irate,imax)
     seed_normal= mod(itime+5*iproc,1000)
@@ -56,8 +77,11 @@ contains
   !free normal mode arrays
 
   subroutine free_nm()
+    implicit none
+    integer:: ier
     deallocate(transmatrix,beadmass,lam)
     if (.not. ring) deallocate(beadvec)
+    if (use_fft) ier = DftiFreeDescriptor(fft_handle)
   end subroutine free_nm
 
   !-----------------------------------------------------
@@ -110,22 +134,7 @@ contains
     integer::                 i,j,k
 
     call dgemv('N', n,n, 1.0d0,transmatrix, n, xprop,1,0.0d0, qprop,1)
-    ! qprop(1)= centroid(xprop)
-    ! do i=2, n-2,2
-    !    k=i/2
-    !    qprop(i)=0.0d0
-    !    qprop(i+1)=0.0d0
-    !    do j=1,n
-    !       qprop(i)= qprop(i)+sqrt(2.0d0/dble(n))*xprop(j)*sin(2.0*j*k*pi/dble(N))
-    !       qprop(i+1)= qprop(i+1)+sqrt(2.0d0/dble(n))*xprop(j)*cos(2.0*j*k*pi/dble(N))
-    !    end do
-    ! end do
-    ! if (mod(n,2) .eq. 0) then
-    !    qprop(n/2)=0.0d0
-    !    do j=1,n
-    !       qprop(n/2)= qprop(n/2)+ ((-1)**j)*xprop(j)/sqrt(dble(N))
-    !    end do
-    ! end if
+
     return
   end subroutine ring_transform_forward
   !-----------------------------------------------------
@@ -138,22 +147,6 @@ contains
     integer::                 i,j
 
     call dgemv('T', n, n,1.0d0, transmatrix, n, qprop,1,0.0d0, xprop,1)
-    ! qprop(1)= centroid(xprop)
-    ! do i=2, n-2,2
-    !    k=i/2
-    !    qprop(i)=0.0d0
-    !    qprop(i+1)=0.0d0
-    !    do j=1,n
-    !       qprop(i)= qprop(i)+sqrt(2.0d0/dble(n))*xprop(j)*sin(2.0*j*k*pi/dble(N))
-    !       qprop(i+1)= qprop(i+1)+sqrt(2.0d0/dble(n))*xprop(j)*cos(2.0*j*k*pi/dble(N))
-    !    end do
-    ! end do
-    ! if (mod(n,2) .eq. 0) then
-    !    qprop(n/2)=0.0d0
-    !    do j=1,n
-    !       qprop(n/2)= qprop(n/2)+ ((-1)**j)*xprop(j)/sqrt(dble(N))
-    !    end do
-    ! end if
     return
   end subroutine ring_transform_backward
 
@@ -168,7 +161,7 @@ contains
     allocate(qprop_nr(1:n+1))
     qprop_nr(1)=0.0d0
     qprop_nr(2:n+1)=xprop(1:n)
-    call sinft(qprop_nr)
+    ! call sinft(qprop_nr)
     qprop(1:n)= qprop_nr(2:n+1)*sqrt(2.0d0/(dble(n+1)))
     if (bead.gt.0) qprop(:)= qprop(:) - beadvec(:,bead)
     deallocate(qprop_nr)
@@ -188,7 +181,7 @@ contains
     else 
        xprop_nr(2:n+1)=qprop(1:n)
     end if
-    call sinft(xprop_nr)
+    ! call sinft(xprop_nr)
     xprop(1:n)= xprop_nr(2:n+1)*sqrt(2.0d0/(dble(n+1)))
     deallocate(xprop_nr)
     return
@@ -199,13 +192,21 @@ contains
   !normal mode forward transformation for linear polymer
   subroutine ring_transform_forward_nr(xprop, qprop)
     implicit none
-    double precision::        xprop(:), qprop(:)
-    double precision, allocatable:: qprop_nr(:)
-    integer::                 i,j
-    !TODO: implement numerical recipes FFT
+    double precision, intent(in):: xprop(:)
+    double precision, intent(out):: qprop(:)
+    double precision:: qprop_nr(n)
+    integer::                 i,j,k, ier
 
-    write(*,*) "Not implemented!"
-    stop
+    qprop_nr(:)= xprop(:)
+
+    ier = DftiComputeForward(fft_handle, qprop_nr)
+
+    qprop(1)= qprop_nr(1)
+    qprop(n)= qprop_nr(n)
+    do i=2,n-1,2
+       qprop(i)= qprop_nr(i)*sqrt(2.0d0)
+       qprop(i+1)= -qprop_nr(i+1)*sqrt(2.0d0)
+    end do
     return
   end subroutine ring_transform_forward_nr
   !-----------------------------------------------------
@@ -213,13 +214,19 @@ contains
   !normal mode backward transformation for linear polymer
   subroutine ring_transform_backward_nr(qprop, xprop)
     implicit none
-    double precision::        xprop(:), qprop(:)
-    double precision, allocatable:: xprop_nr(:)
-    integer::                 i,j
-    !TODO: implement numerical recipes inverse FFT
+    double precision, intent(in):: qprop(:)
+    double precision, intent(out):: xprop(:)
+    double precision:: xprop_nr(n)
+    integer::                 i,j,k,ier
 
-    write(*,*) "Not implemented!"
-    stop
+    xprop_nr(1)= qprop(1)
+    xprop_nr(n)= qprop(n)
+    do i=2,n-1,2
+       xprop_nr(i)=qprop(i)/sqrt(2.0d0)
+       xprop_nr(i+1)=-qprop(i+1)/sqrt(2.0d0)
+    end do
+    ier = DftiComputeBackward(fft_handle, xprop_nr)
+    xprop(:)= xprop_nr(:)
     return
   end subroutine ring_transform_backward_nr
 

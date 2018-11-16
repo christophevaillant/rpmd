@@ -4,7 +4,7 @@ FC= ifort
 MPIFC= mpif90
 FFLAGS= -warn -g -O2 -i8 -r8 -w -no-wrap-margin -module ../modules
 FLIBS_PAR=-L${MKLROOT}/lib/intel64 -mkl=sequential -lmkl_rt -lpthread -lm -ldl
-FLIBS_SEQ=-L${MKLROOT}/lib/intel64 -mkl=sequential -lmkl_rt -lpthread -lm -ldl
+FLIBS_SEQ=-L${MKLROOT}/lib/intel64 -mkl=sequential -lmkl_rt -lpthread -lm -ldl -L. -lfftpack -lgfortran
 INCLUDE= -I${MKLROOT}/include
 BUILDDIR= ../bin
 OBJDIR= ../objects
@@ -12,7 +12,7 @@ MODDIR= ../modules
 ###################################################################################
 #List the object files and their dependencies
 #Define some variables with common files
-PREPOTFILES= $(OBJDIR)/nr_fft.o $(OBJDIR)/general.o
+PREPOTFILES= $(OBJDIR)/mkl_dfti.o $(OBJDIR)/general.o
 .SECONDEXPANSION:
 POSTPOTFILES= $(OBJDIR)/instantonmod.o $(OBJDIR)/verletmodule.o
 
@@ -32,6 +32,8 @@ $(OBJDIR)/%.o: %.f
 $(OBJDIR)/%.o: %.f90
 	$(FC) -c $(FFLAGS) $< -o $@
 
+$(OBJDIR)/mkl_dfti.o: ${MKLROOT}/include/mkl_dfti.f90
+	$(FC) -c $(FFLAGS) $< -o $@
 
 ###################################################################################
 #Rules for the final executables

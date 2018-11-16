@@ -14,7 +14,7 @@ module verletint
   double precision::                dt, dHdrlimit
   double precision, allocatable::   c1(:,:), c2(:,:)
   double precision::                tau, gamma
-  logical::                         iprint, use_mkl
+  logical::                         iprint
 contains
 
   !-----------------------------------------------------
@@ -50,7 +50,7 @@ contains
                 do l=1,n
                    tempp(l)= pprop(l)*sqrt(beadmass(k,l))
                 end do
-                if (.not. use_mkl) then
+                if (.not. use_fft) then
                    if (ring) then
                       call ring_transform_backward(tempp, tempv)
                    else
@@ -99,12 +99,8 @@ contains
     double precision, allocatable::  force(:,:,:), pip(:,:,:)
 
     allocate(force(n, ndim, natom), pip(n, ndim, natom))
-    ! write(*,*) "pot 1:"
-    ! write(*,*) "----------"
-    call step_v(0.5d0*dt, xprop, vprop, force, .true.)
-    ! write(*,*) "nm:"
+    call step_v(dt, xprop, vprop, force, .true.)
     call step_nm(dt,xprop,vprop ,.true.)
-    call step_v(0.5d0*dt, xprop, vprop, force, .true.)
     deallocate(force)
     return
   end subroutine time_step
@@ -156,48 +152,39 @@ contains
        beadmass(j,1)=mass(j)
     end do
     do l=1,n
-       transmatrix(1,l)= 1.0d0/sqrt(dble(n))
+       transmatrix(1,l)= 1.0d0/sqrt(dble(n)) !k=0
     end do
-    ! write(*,*) 0,0, sum(transmatrix(1,:)**2)
     !do all the other modes in steps of two
     do i=2, n-2,2
-          k= (i/2)
-          lam(i)= 2.0d0*sin(dble(k)*pi/dble(n))/betan
-          lam(i+1)=2.0d0*sin(dble(k)*pi/dble(n))/betan
-          do j=1, natom
-             beadmass(j,i)=mass(j)!*(lam(i)*tau)**2
-             beadmass(j,i+1)=mass(j)!*(lam(i)*tau)**2
-          end do
+       k= (i/2)
+       lam(i)= 2.0d0*sin(dble(k)*pi/dble(n))/betan
+       lam(i+1)=2.0d0*sin(dble(k)*pi/dble(n))/betan
+       do j=1, natom
+          beadmass(j,i)=mass(j)!*(lam(i)*tau)**2
+          beadmass(j,i+1)=mass(j)!*(lam(i)*tau)**2
+       end do
        do l=1,n
           transmatrix(i,l)= sqrt(2.0d0/dble(n))*&
-               sin(2.0d0*l*k*pi/dble(n))
+               cos(2.0d0*dble((l-1)*k)*pi/dble(n))
           transmatrix(i+1,l)= sqrt(2.0d0/dble(n))*&
-               cos(2.0d0*l*k*pi/dble(n))
+               sin(2.0d0*dble((l-1)*k)*pi/dble(n))
           if (transmatrix(i,l) .ne. transmatrix(i,l)) then
              write(*,*)"Nan!"
              stop
           end if
        end do
-       ! write(*,*) i,k, sum(transmatrix(i,:)**2)
-       ! write(*,*) i,-k, sum(transmatrix(i+1,:)**2)
     end do
     if (mod(n,2).eq.0) then
        i=n
-       k=i/2
+       k=(i/2)
        lam(i)=2.0d0/betan
        do j=1,natom
           beadmass(j,i)=mass(j)!*(lam(i)*tau)**2
        end do
-       do l=1,n
-          transmatrix(i,l)= ((-1.0d0)**l)/sqrt(dble(n))
+       do l=0,n-1
+          transmatrix(i,l+1)= ((-1.0d0)**l)/sqrt(dble(n))
        end do
-    ! write(*,*) i,k, sum(transmatrix(i,:)**2)
     end if
-    ! write(*,*) transmatrix
-    ! write(*,*) "------------------"
-    ! write(*,*) lam
-    ! write(*,*) "bloop"
-
   end subroutine init_ring
   !-----------------------------------------------------
   !-----------------------------------------------------
@@ -288,7 +275,7 @@ contains
        do i=1,ndim
           do j=1,natom
              dofi= (j-1)*ndim+i
-             if (.not. use_mkl) then
+             if (.not. use_fft) then
                 if (ring) then
                    call ring_transform_forward(p(:,i,j), pip(:,i,j))
                    call ring_transform_forward(x(:,i,j), q(:,i,j))
@@ -333,7 +320,7 @@ contains
        do i=1,ndim
           do j=1,natom
              dofi=calcidof(i,j)
-             if (.not. use_mkl) then
+             if (.not. use_fft) then
                 if (ring) then
                    call ring_transform_backward(newpi(:,i,j), p(:,i,j))
                    call ring_transform_backward(q(:,i,j), x(:,i,j))
@@ -397,7 +384,7 @@ contains
     do i=1,ndim
        do j=1,natom
           dofi= calcidof(i,j)
-          if (.not. use_mkl) then
+          if (.not. use_fft) then
              if (ring) then
                 call ring_transform_forward(vprop(:,i,j), p(:,i,j))
              else
@@ -427,7 +414,7 @@ contains
     do i=1,ndim
        do j=1,natom
           dofi= (j-1)*ndim +i
-          if (.not. use_mkl) then
+          if (.not. use_fft) then
              if (ring) then
                 call ring_transform_backward(p(:,i,j),vprop(:,i,j))
              else
@@ -452,7 +439,7 @@ contains
     implicit none
     double precision, intent(inout)::  xprop(:,:,:), vprop(:,:,:)
     double precision, intent(out):: tcf(:,:)
-    double precision, allocatable::  x0(:,:,:)
+    double precision, allocatable::  x0(:,:,:),q0(:,:,:),q2(:,:,:)
     double precision::              contr,randno, Eold,p0
     integer::              i,j,k,count, time1,time2,imax, irate, jj
     integer (kind=4)::     rkick(1)
@@ -461,6 +448,17 @@ contains
     allocate(x0(n,ndim,natom))
     x0(:,:,:)=xprop(:,:,:)
     p0= centroid(vprop(:,1,1))
+    ! if (use_fft) then
+    !    allocate(q0(n,ndim,natom), q2(n,ndim,natom))
+    !    call ring_transform_forward_nr(x0(:,1,1),q0(:,1,1))
+    !    call ring_transform_forward(xprop(:,1,1),q2(:,1,1))
+    !    call ring_transform_backward_nr(q0(:,1,1), x0(:,1,1))
+    !    do i=1,n
+    !       write(*,*)i,q0(i,1,1),q2(i,1,1)
+    !       write(*,*)i,x0(i,1,1), xprop(i,1,1)
+    !    end do
+    ! stop
+    ! end if
     do i=1, NMC, 1
        call time_step(xprop, vprop)
        if (mod(i,Noutput) .eq. 0 .and. i .gt. imin) then !count .ge. Noutput

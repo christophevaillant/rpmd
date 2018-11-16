@@ -92,8 +92,7 @@ contains
   !-----------------------------------------------------
   !function for initializing a path
   subroutine init_path(x, p, factors)
-    double precision, intent(inout):: x(:,:,:), p(:,:,:)
-    double precision, intent(out)::  weight,factors
+    double precision, intent(out):: x(:,:,:), p(:,:,:),factors
     double precision, allocatable::   vel(:), tempp(:), pos(:), tempx(:)
     double precision, allocatable::  rk(:,:), pk(:,:), rp(:)
     double precision::                stdev, potvals, ringpot, potdiff, poscent
@@ -128,7 +127,11 @@ contains
           !---------------------------
           !transform to non-ring polymer normal mode coords
           if (ring) then
-             call ring_transform_backward(rp, rk(:,idof))
+             if (use_fft) then
+                call ring_transform_backward_nr(rp, rk(:,idof))
+             else
+                call ring_transform_backward(rp, rk(:,idof))
+             end if
              ! call ring_transform_backward(vel, pk(:,idof))
           else
              call linear_transform_backward(rp, rk(:,idof), idof)

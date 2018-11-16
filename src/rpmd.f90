@@ -3,6 +3,7 @@ program rpmd
   use verletint
   use estimators
   use instantonmod
+  use general
   use MKL_VSL_TYPE
   use MKL_VSL
 
@@ -23,7 +24,7 @@ program rpmd
   integer,allocatable::            isuppz(:), iwork(:)
   double precision, allocatable::  work(:), z(:,:)
   namelist /MCDATA/ n, beta, NMC, noutput,dt, iprint,imin,tau,&
-       nrep, use_mkl, thermostat, ndim, natom, xunit,gamma, &
+       nrep, use_fft, thermostat, ndim, natom, xunit,gamma, &
        outputtcf, outputfbar
        
   !-------------------------
@@ -39,7 +40,7 @@ program rpmd
   ndim=3
   natom=1
   xunit=1
-  use_mkl=.false.
+  use_fft=.false.
   imin=0
   tau=1.0d0
   gamma=1.0d0
@@ -136,7 +137,7 @@ program rpmd
      call init_path(x,p, tcf0)
      p0(:,:,:)=p(:,:,:)
      q0(:,:,:)=x(:,:,:)
-     write(*,*) ii,tcf0, centroid(p0(:,1,1))/mass(1)
+     ! write(*,*) ii,tcf0, centroid(p0(:,1,1))/mass(1)
      if (thermostat.eq.0) then
         call ring_rpmd(x,p,tcf)
      else if (thermostat.eq.1) then
