@@ -1,3 +1,4 @@
+#TODO: run checks for correct folders created in makefile and stop tracking the folders altogether
 ###################################################################################
 #Define all the compilers and their options
 FC= ifort
