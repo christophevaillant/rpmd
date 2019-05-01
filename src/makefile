@@ -22,7 +22,16 @@ RATEFILES= $(OBJDIR)/estimators_rates.o
 #1D eckart barrier :
 ECKARTFILES= $(OBJDIR)/potential_eckart.o
 
+#1D asymmetric barrier :
+ASYMMFILES= $(OBJDIR)/potential_asymmetric.o
+
 rpmd_eckart_rate: POSTPOTFILES= $(OBJDIR)/instantonmod.o $(OBJDIR)/estimators_rates.o $(OBJDIR)/verletmodule.o
+
+rpmd_eckart_flux: POSTPOTFILES= $(OBJDIR)/instantonmod.o $(OBJDIR)/estimators_fluxflux.o $(OBJDIR)/verletmodule.o
+
+rpmd_asymm_rate: POSTPOTFILES= $(OBJDIR)/instantonmod.o $(OBJDIR)/estimators_rates.o $(OBJDIR)/verletmodule.o
+
+rpmd_asymm_flux: POSTPOTFILES= $(OBJDIR)/instantonmod.o $(OBJDIR)/estimators_fluxflux.o $(OBJDIR)/verletmodule.o
 
 
 ###################################################################################
@@ -43,6 +52,17 @@ $(OBJDIR)/mkl_dfti.o: ${MKLROOT}/include/mkl_dfti.f90
 #eckart barrier potential:
 rpmd_eckart_rate: $(PREPOTFILES) $(ECKARTFILES) $$(POSTPOTFILES) $(OBJDIR)/rpmd.o
 	$(FC) $(FFLAGS) $(PREPOTFILES) $(ECKARTFILES) $(POSTPOTFILES) $(OBJDIR)/rpmd.o -o $(BUILDDIR)/$@ $(FLIBS_SEQ)
+
+rpmd_eckart_flux: $(PREPOTFILES) $(ECKARTFILES) $$(POSTPOTFILES) $(OBJDIR)/fluxflux.o
+	$(FC) $(FFLAGS) $(PREPOTFILES) $(ECKARTFILES) $(POSTPOTFILES) $(OBJDIR)/fluxflux.o -o $(BUILDDIR)/$@ $(FLIBS_SEQ)
+
+################################
+#asymmetric eckart barrier potential:
+rpmd_asymm_rate: $(PREPOTFILES) $(ASYMMFILES) $$(POSTPOTFILES) $(OBJDIR)/rpmd.o
+	$(FC) $(FFLAGS) $(PREPOTFILES) $(ASYMMFILES) $(POSTPOTFILES) $(OBJDIR)/rpmd.o -o $(BUILDDIR)/$@ $(FLIBS_SEQ)
+
+rpmd_asymm_flux: $(PREPOTFILES) $(ASYMMFILES) $$(POSTPOTFILES) $(OBJDIR)/fluxflux.o
+	$(FC) $(FFLAGS) $(PREPOTFILES) $(ASYMMFILES) $(POSTPOTFILES) $(OBJDIR)/fluxflux.o -o $(BUILDDIR)/$@ $(FLIBS_SEQ)
 
 ###################################################################################
 #Rules for cleanup

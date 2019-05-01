@@ -16,7 +16,7 @@ program rpmd
   double precision::               answer,sigmaA, weight
   double precision::               tcf0, totalweight,s, ringpot
   double precision, allocatable::  x(:,:,:), p(:,:,:), totaltcf(:,:)
-  double precision, allocatable::  hesstemp(:,:,:,:), v(:,:),p0(:,:,:),q0(:,:,:)
+  double precision, allocatable::  v(:,:),p0(:,:,:),q0(:,:,:)
   !lapack variables
   character::                      jobz, range, uplo
   double precision::               vl, vu, abstol
@@ -54,6 +54,7 @@ program rpmd
   write(*,*)"Running with parameters (in a.u.):"
   write(*,*) "beta, betan, n=", beta, betan, n
   write(*,*) "NMC, Noutput, dt=", NMC, Noutput, dt
+  write(*,*) "Nrep=", nrep
   if (thermostat .eq. 1) then
      write(*,*) "tau=", tau
      write(*,*) "Running with Andersen thermostat"
@@ -84,39 +85,9 @@ program rpmd
   if (xunit .eq. 2) transition(:,:)= transition(:,:)/0.529177d0
 
 
-  allocate(hess(ndof,ndof), hesstemp(ndim, natom, ndim, natom))
-  call massweightedhess(transition, hesstemp)
-  do i1=1, natom
-     do j1=1, ndim
-        do i2= 1, natom
-           do j2= 1,ndim
-              idof1= (j1-1)*ndim + i1
-              idof2= (j2-1)*ndim + i2
-              hess(idof1,idof2)= hesstemp(j1,i1,j2,i2)
-           end do
-        end do
-     end do
-  end do
-  lwork=1+ 6*ndof + 2*ndof**2
-  liwork= 3 + 5*ndof
-  info=0
-  allocate(work(lwork), iwork(liwork))
-  allocate(transfreqs(ndof))
-  call dsyevd('V', 'U', ndof, hess, ndof, transfreqs,work,lwork,iwork,&
-       liwork,info)
-  deallocate(work, iwork)
-  ! write(*,*) hess
-  do i=1, natom
-     do j=1, ndim
-        idof= calcidof(i,j)
-        normalvec(j,i)= hess(1,idof)
-        if (hess(1,1) .gt. 0.0) then
-           normalvec(j,i)= hess(1,idof)
-        else
-           normalvec(j,i)= -hess(1,idof)
-        end if
-     end do
-  end do
+  allocate(hess(ndof,ndof), transfreqs(ndof))
+  call findhess(transition, hess)
+  call findnormal(transition, hess, transfreqs,normalvec)
   write(*,*) "normalvec:",normalvec
   !-------------------------
   !-------------------------
@@ -147,6 +118,7 @@ program rpmd
            totaltcf(i,j)= totaltcf(i,j) + tcf(i,j)*tcf0
         end do
      end do
+     if (iprint) write(*,*) ii, tcf0
      !Optional output of f1 and fbar to check stats
      if (outputfbar) then
         allocate(v(ndim,natom))
@@ -181,11 +153,15 @@ program rpmd
      end do
      close(100)
   end if
+  if (ndim.eq.1) then
+     write(*,*) "classical TST=", exp(-beta*V0)/(2.0d0*pi*beta)
+     write(*,*) "classical correction factor=",totaltcf(1,ntime)*(2.0d0*pi*beta)*exp(beta*V0)
+  end if
   call free_nm()
   call finalize_estimators()
   call system_clock(time2, irate, imax)
   write(*,*) "Time taken (s)=",dble(time2-time1)/dble(irate)
-  deallocate(mass, hess, hesstemp)
+  deallocate(mass, hess)
   deallocate(x,p, totaltcf, tcf)
   deallocate(transition, normalvec, transfreqs)
 

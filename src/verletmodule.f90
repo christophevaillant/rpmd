@@ -59,7 +59,7 @@ contains
           count=count+1
           if (count .ge. rkick(1)) then
              count=0
-             if (iprint) write(*,*) 100*dble(i)/dble(NMC),tcf(1,i/Noutput)
+             ! if (iprint) write(*,*) 100*dble(i)/dble(NMC),tcf(1,i/Noutput)
              do j=1,ndim
                 do k=1,natom
                    dofi=calcidof(j,k)
@@ -101,8 +101,7 @@ contains
        !----------------------------------------
        !Calculate the estimator for this step
        if (i .gt. imin) then
-          call estimator(xprop, vprop, tcf(1,i/Noutput))
-          !TODO: generalize to multiple estimators if necessary
+          call estimator(xprop, vprop, tcf(:,i/Noutput))
        end if
     end do
     deallocate(pprop, tempv, tempp)

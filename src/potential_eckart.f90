@@ -6,7 +6,7 @@ module potential
 contains
   subroutine V_init()
     Vheight=1.56185d-2
-    x0=0.734d0
+    x0=0.735d0
     V0=Vheight
     return
   end subroutine V_init

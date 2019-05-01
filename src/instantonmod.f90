@@ -712,4 +712,56 @@ end subroutine centreofmass
     return
   end function eucliddist
 
+subroutine findhess(x,hess)
+  double precision, allocatable::  hesstemp(:,:,:,:)
+  double precision, intent(in)::  x(:,:)
+  double precision, intent(out)::  hess(:,:)
+  integer::  i1,j1,i2,j2,idof1,idof2
+  allocate(hesstemp(ndim, natom, ndim, natom))
+  call massweightedhess(x, hesstemp)
+  do i1=1, natom
+     do j1=1, ndim
+        do i2= 1, natom
+           do j2= 1,ndim
+              idof1= (j1-1)*ndim + i1
+              idof2= (j2-1)*ndim + i2
+              hess(idof1,idof2)= hesstemp(j1,i1,j2,i2)
+           end do
+        end do
+     end do
+  end do
+deallocate(hesstemp)
+end subroutine findhess
+
+subroutine findnormal(x, hess, freqs,normal)
+  implicit none
+  double precision, intent(in)::   x(:,:), hess(:,:)
+  double precision, intent(out)::  freqs(:), normal(:,:)
+  integer::                        ldz, lwork, liwork, info
+  integer::                        i,j,idof
+  integer,allocatable::            iwork(:)
+  double precision, allocatable::  work(:), z(:,:)
+
+  lwork=1+ 6*ndof + 2*ndof**2
+  liwork= 3 + 5*ndof
+  info=0
+  allocate(work(lwork), iwork(liwork))
+  call dsyevd('V', 'U', ndof, hess, ndof, freqs,work,lwork,iwork,&
+       liwork,info)
+  deallocate(work, iwork)
+
+  do i=1, natom
+     do j=1, ndim
+        idof= calcidof(i,j)
+        normal(j,i)= hess(1,idof)
+        if (hess(1,1) .gt. 0.0) then
+           normal(j,i)= hess(1,idof)
+        else
+           normal(j,i)= -hess(1,idof)
+        end if
+     end do
+  end do
+
+end subroutine findnormal
+
 end module instantonmod

@@ -66,7 +66,7 @@ contains
   subroutine estimator(x,p,tcfval)
     implicit none
     double precision, intent(in):: x(:,:,:), p(:,:,:)
-    double precision, intent(out):: tcfval
+    double precision, intent(out):: tcfval(:)
     double precision,allocatable:: v(:,:)
     double precision:: s
     integer:: i,j
