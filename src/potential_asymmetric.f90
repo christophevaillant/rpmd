@@ -3,6 +3,8 @@ module potential
   implicit none
   double precision::               V0, Aeck, Beck, x0
 
+  public
+
 contains
   subroutine V_init()
     Aeck=-18.0d0/pi
