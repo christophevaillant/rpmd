@@ -1,0 +1,21 @@
+
+To do:
+-main rpmd code
+ --read in 1 mass, fill masses for all lattice sites (may need to put in new flag for this)
+ --force estimator to evaluate at each time step in main routine
+ --read in templeft and tempright, then calculate betanleft and betanright
+ --need width to be declared and read in
+-implement potential
+ --use natoms to define number of sites
+ --implement lattice in potential, where lattice(0) and lattice(N+1) are baths!
+ --make harmonic frequencies global, called harm and interharm
+
+Done:
+-implement estimator
+ --include bath checks
+-initial PIMC: use guassians for each lattice site
+ --3 gaussians possible: ring polymer, lattice, interatomic
+ --generate ring polymer and add to lattice, factor weighted by interatomic
+
+Remember:
+-LATTICE STARTS FROM I=2 AND ENDS AT I=NATOM+1

@@ -17,7 +17,7 @@ PREPOTFILES= $(OBJDIR)/mkl_dfti.o $(OBJDIR)/general.o
 .SECONDEXPANSION:
 POSTPOTFILES= $(OBJDIR)/instantonmod.o $(OBJDIR)/verletmodule.o
 
-RATEFILES= $(OBJDIR)/estimators_rates.o
+# RATEFILES= $(OBJDIR)/estimators_rates.o
 
 #1D eckart barrier :
 ECKARTFILES= $(OBJDIR)/potential_eckart.o
