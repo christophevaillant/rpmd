@@ -155,7 +155,7 @@ program rpmd
   end if
   if (ndim.eq.1) then
      write(*,*) "classical TST=", exp(-beta*V0)/(2.0d0*pi*beta)
-     write(*,*) "classical correction factor=",totaltcf(1,ntime)*(2.0d0*pi*beta)*exp(beta*V0)
+     write(*,*) "classical correction factor=",totaltcf(1,ntime)*(2.0d0*pi*beta)*exp(beta*V0)/calcpartition()
   end if
   call free_nm()
   call finalize_estimators()
