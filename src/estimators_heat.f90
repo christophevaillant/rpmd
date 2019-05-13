@@ -5,15 +5,15 @@ module estimators
 
   implicit none
 
-  public:: init_estimators, estimator, finalize_estimators, transition, normalvec,&
-       transfreqs, hess, init_path
+  public:: init_estimators, estimator, finalize_estimators,transfreqs, init_path, whichestim,&
+       betanright, betanleft, width
 
   private
 
   logical, allocatable:: whichestim(:)
   double precision, allocatable:: transition(:,:), normalvec(:,:), transfreqs(:)
-  double precision, allocatable:: lambda(:,:), hess(:,:)
-  double precision:: betanleft, betanright
+  double precision, allocatable:: lambda(:,:)
+  double precision:: betanleft, betanright, width
 
 contains
 
@@ -63,17 +63,15 @@ contains
 
   subroutine finalize_estimators()
     implicit none
-    if (outputfbar) close(200)
     deallocate(whichestim)
-    deallocate(lambda)
   end subroutine finalize_estimators
 
   subroutine estimator(x,p,tcfval)
     implicit none
-    double precision, intent(in):: x(:,:,:), p(:,:,:)
+    double precision, intent(inout):: x(:,:,:), p(:,:,:)
     double precision, intent(out):: tcfval(:)
     double precision,allocatable:: v(:,:), newp(:)
-    double precision:: s, energy
+    double precision:: s, energy, prob, stdev
     integer:: i,j,k
 
     !TODO: multidimensional will need to work out which side of bath each particle is
@@ -92,20 +90,22 @@ contains
     do i=1, natom
        energy=0.0d0
        do j=1, N
-          prob= exp(-0.5d0*(x(j,i,1)-lattice(1,i))**2/width**2)/sqrt(2.0d0*pi*width**2)
-          energy= energy + prob*0.5d0*p(j,i,1)**3/mass(i)**2
+          prob= exp(-0.5d0*(x(j,1,i)-lattice(1,i+1))**2/width**2)/sqrt(2.0d0*pi*width**2)
+          energy= energy + prob*0.5d0*p(j,1,i)**3/mass(i)**2
           !check the atom is still in the box!
-          if (x(j,i,1) .lt. lattice(1,0)) then
-             x(j,i,1)= lattice(1,0)
+          if (x(j,1,i) .lt. lattice(1,1)) then
+             ! write(*,*) "left bounce", x(j,1,i), lattice(1,1)
+             x(j,1,i)= lattice(1,1)
              stdev= 1.0d0/sqrt(betanleft) !TODO: check that this shouldn't just be beta
              errcode_normal = vdrnggaussian(rmethod_normal,stream_normal,1,newp,0.0d0,stdev)
-             p(j,i,1)= abs(newp(1))*sqrt(mass(i)
-          else if (x(j,i,1) .gt. lattice(1,N+1)) then
-             x(j,i,1)= lattice(1,N+1)
+             p(j,1,i)= abs(newp(1))*sqrt(mass(i))
+          else if (x(j,1,i) .gt. lattice(1,natom+2)) then
+             ! write(*,*) "right bounce", x(j,1,i), lattice(1,natom+2)
+             x(j,1,i)= lattice(1,Natom+2)
              stdev= 1.0d0/sqrt(betanright) !TODO: check that this shouldn't just be beta
              errcode_normal = vdrnggaussian(rmethod_normal,stream_normal,1,newp,0.0d0,stdev)
              !TODO: multidimensional generalization like for the directional langevin thermostat
-             p(j,i,1)= -abs(newp(1))*sqrt(mass(i)
+             p(j,1,i)= -abs(newp(1))*sqrt(mass(i))
           end if
        end do
        tcfval(1)= tcfval(1) + energy/dble(N)
@@ -120,16 +120,18 @@ contains
   !function for initializing a path
   subroutine init_path(x, p, factors)
     double precision, intent(out):: x(:,:,:), p(:,:,:),factors
-    double precision, allocatable:: vel(:), tempp(:), pos(:), tempx(:)
-    double precision, allocatable:: rk(:,:), pk(:,:), rp(:)
+    double precision, allocatable:: tempx(:),rk(:,:),rp(:)
     double precision::              stdev, potvals, ringpot, potdiff
-    double precision::              prob, stdevharm
+    double precision::              prob, stdevharm, energy
     integer::                       i,j,k, idof, imin(1), inn
 
-    allocate(tempp(n), vel(n),pos(n), rp(n),tempx(n))
-    allocate(rk(n,ndof),pk(n,ndof))
+    allocate(rp(n),tempx(n))
+    allocate(rk(n,ndof))
     potvals=0.0d0
     stdev= 1.0d0/sqrt(betan)
+    x(:,:,:)= 0.0d0
+    p(:,:,:)= 0.0d0
+
     do idof=1, ndof
           !---------------------------
           !generate random numbers for chain
@@ -157,19 +159,22 @@ contains
     end do
     !---------------------------
     !transform to global cartesian coordinates    
-    potvals=0.0d0
     do i=1,ndim
        do j=1,natom
           stdevharm= 1.0d0/sqrt(harm*mass(j))
-          errcode_normal = vdrnggaussian(rmethod_normal,stream_normal,n,newx,lattice(i,j),stdevharm)!sites
+          stdev= 1.0d0/sqrt(betan)
+          errcode_normal = vdrnggaussian(rmethod_normal,stream_normal,n,tempx,lattice(i,j+1),stdevharm)!sites
           errcode_normal = vdrnggaussian(rmethod_normal,stream_normal,n,p(:,i,j),0.0d0,stdev)!momenta
-          x(:,i,j)= x(:,i,j) + newx(:,i,j)
+          x(:,i,j)= x(:,i,j) + tempx(:)
           p(:,i,j)= p(:,i,j)*sqrt(mass(j))
-          if (j.lt.natom) then
-             do k=1,n
-                potvals=potvals + 0.5d0*mass(j)*(interharm*(x(k,i,j)-x(k,i,j+1)))**2
-             end do
-          end if
+       end do
+    end do
+    potvals=0.0d0
+    do i=1,ndim
+       do j=1,natom-1
+          do k=1,n
+             potvals=potvals + 0.5d0*mass(j)*(interharm*(x(k,i,j)-x(k,i,j+1)))**2
+          end do
        end do
     end do
     ringpot= 0.0d0
@@ -177,15 +182,18 @@ contains
        ringpot= ringpot+ pot(x(k,:,:))
     end do
     potdiff= (ringpot- potvals)
+    write(*,*)potdiff, ringpot, potvals
     factors=0.0d0
     do i=1,natom
+       energy=0.0d0
        do j=1,n
-          prob= exp(-0.5d0*(x(j,i,1)-lattice(1,i))**2/width**2)/sqrt(2.0d0*pi*width**2)
-          factors=factors+ prob*0.5d0*p(j,i,1)**3/mass(i)**2
+          prob= exp(-0.5d0*(x(j,1,i)-lattice(1,i+1))**2/width**2)/sqrt(2.0d0*pi*width**2)
+          energy= energy + prob*0.5d0*p(j,1,i)**3/mass(i)**2
        end do
+       factors=factors+ energy/dble(n)
     end do
-    factors=factors*exp(-betan*potdiff)
-    deallocate(vel, tempp,pos, tempx)
+    factors=factors*min(exp(-betan*potdiff),1.0d0)
+    deallocate(tempx, rp, rk)
     return
   end subroutine init_path
 
