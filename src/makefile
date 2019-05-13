@@ -5,7 +5,7 @@ FC= ifort
 MPIFC= mpif90
 FFLAGS= -warn -g -O2 -i8 -r8 -w -no-wrap-margin -module ../modules
 FLIBS_PAR=-L${MKLROOT}/lib/intel64 -mkl=sequential -lmkl_rt -lpthread -lm -ldl
-FLIBS_SEQ=-L${MKLROOT}/lib/intel64 -mkl=sequential -lmkl_rt -lpthread -lm -ldl -L. -lfftpack -lgfortran
+FLIBS_SEQ=-L${MKLROOT}/lib/intel64 -mkl=sequential -lmkl_rt -lpthread -lm -ldl
 INCLUDE= -I${MKLROOT}/include
 BUILDDIR= ../bin
 OBJDIR= ../objects
