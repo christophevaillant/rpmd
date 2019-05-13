@@ -106,7 +106,6 @@ contains
           !---------------------------
           !generate random numbers for chain
           errcode_normal = vdrnggaussian(rmethod_normal,stream_normal,n,rp,0.0d0,stdev)!ringpolymer
-          ! errcode_normal = vdrnggaussian(rmethod_normal,stream_normal,n,vel,0.0d0,stdev)!momenta
           !---------------------------
           !scale them to have the right standard deviation
           do k=1, n
@@ -117,13 +116,12 @@ contains
              end if
           end do
           !---------------------------
-          !calculate contribution from the harmonic potential (ignore
-          ! the contribution from the bead springs)
-          ! if (idof .gt. 1) then
-          !    do k=1,n
-          !       potvals= potvals+0.5d0*transfreqs(idof)*rp(k)**2
-          !    end do
-          ! end if
+          !calculate contribution from the approximate harmonic potential at the barrier
+          if (idof .gt. 1) then
+             do k=1,n
+                potvals= potvals+0.5d0*transfreqs(idof)*rp(k)**2
+             end do
+          end if
           !---------------------------
           !transform to non-ring polymer normal mode coords
           if (ring) then
@@ -132,10 +130,8 @@ contains
              else
                 call ring_transform_backward(rp, rk(:,idof))
              end if
-             ! call ring_transform_backward(vel, pk(:,idof))
           else
              call linear_transform_backward(rp, rk(:,idof), idof)
-             ! call linear_transform_backward(vel, pk(:,idof), 0)
           end if
           if (idof .gt. 1) then
              errcode_normal = vdrnggaussian(rmethod_normal,stream_normal,n,pos,0.0d0,stdev)
@@ -143,67 +139,33 @@ contains
                 rk(k,idof)= rk(k,idof) +pos(k)/sqrt(transfreqs(idof))
              end do
           end if
-          rk(:,idof)= rk(:,idof) - centroid(rk(:,idof))
+          ! rk(:,idof)= rk(:,idof) - centroid(rk(:,idof)) !pin centroid to barrier
     end do
     !---------------------------
     !transform to cartesian coordinates    
-    ringpot= 0.0
     do k=1,n
        x(k,:,:)= reshape(matmul(hess,rk(k,:)),(/ndim,natom/))
-       ! p(k,:,:)= reshape(matmul(transpose(hess),pk(k,:)),(/ndim,natom/))
     end do
     do i=1,ndim
        do j=1,natom
           errcode_normal = vdrnggaussian(rmethod_normal,stream_normal,n,p(:,i,j),0.0d0,stdev)!momenta
-          x(:,i,j)= (x(:,i,j)/sqrt(mass(j))) + transition(i,j)
+          x(:,i,j)= (x(:,i,j)/sqrt(mass(j)))
           p(:,i,j)= p(:,i,j)*sqrt(mass(j))
+          !pin centroid to barrier:
+          x(:,i,j)= x(:,i,j) - centroid(x(:,i,j)) + transition(i,j)
        end do
     end do
+    !calculate real potential for each bead
+    ringpot= 0.0d0
     do k=1,n
        ringpot= ringpot+ pot(x(k,:,:))
     end do
-    potdiff= (ringpot- potvals)
+    potdiff= (ringpot- potvals) !potvals is 0 for 1d
     factors=exp(-betan*potdiff)*centroid(p(:,1,1))/mass(1)
+
     deallocate(vel, tempp,pos, tempx)
+
     return
   end subroutine init_path
-
-  !-----------------------------------------------------
-  !-----------------------------------------------------
-  !function returning nearest neighbour in a list
-  function nearestneighbour(x,y)
-    implicit none
-    integer::  nearestneighbour,k,i
-    double precision:: x, y(:),temp(n)
-
-    temp(:)= 1e30 !big number to ensure no minimum differences outside range
-    do i=1,n
-       if (abs(x - y(i)) .lt. 1d-10) then
-          temp(i)= 1e30
-          cycle
-       end if
-       temp(i)= abs(x - y(i))
-    end do
-    nearestneighbour= minloc(temp, 1)
-    write(*,*) x, y(nearestneighbour)
-    return
-  end function nearestneighbour
-
-  subroutine generate_ring(q,m,y)
-    implicit none
-    double precision,intent(in):: q(:)
-    double precision,intent(out):: y(:)
-    integer:: m,i,j
-    
-    y(:)=0.0d0
-    do j=1,m
-       do i=1,n
-          y(i)= sqrt(2.0d0/dble(m))*q(j)*(&
-               sin(2.0d0*i*(j-1)*pi/dble(m)) + &
-               cos(2.0d0*i*(j-1)*pi/dble(m)))
-          ! write(*,*) i,j, q(j), y(i)
-       end do
-    end do
-  end subroutine generate_ring
 
 end module estimators
