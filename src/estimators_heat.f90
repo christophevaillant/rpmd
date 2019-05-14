@@ -70,7 +70,7 @@ contains
     implicit none
     double precision, intent(inout):: x(:,:,:), p(:,:,:)
     double precision, intent(out):: tcfval(:)
-    double precision,allocatable:: v(:,:), newp(:)
+    double precision,allocatable:: v(:,:), newp(:), grad(:,:,:)
     double precision:: s, energy, prob, stdev
     integer:: i,j,k
 
@@ -87,11 +87,15 @@ contains
 
     allocate(newp(1)) !TODO: multidimensional generalization to ndim
     tcfval(1)=0.0d0
+    allocate(grad(N,1,natom))
+    call UNprime_ring(x, grad)
     do i=1, natom
        energy=0.0d0
        do j=1, N
           prob= exp(-0.5d0*(x(j,1,i)-lattice(1,i+1))**2/width**2)/sqrt(2.0d0*pi*width**2)
-          energy= energy + prob*0.5d0*p(j,1,i)**3/mass(i)**2
+          energy= energy + prob*p(j,1,i)*grad(j,1,i)/mass(i)
+          ! energy= energy + prob*0.5d0*p(j,1,i)**2/mass(i)
+          ! energy= energy + prob*0.5d0*p(j,1,i)**3/mass(i)**2
           !check the atom is still in the box!
           if (x(j,1,i) .lt. lattice(1,1)) then
              ! write(*,*) "left bounce", x(j,1,i), lattice(1,1)
@@ -110,7 +114,7 @@ contains
        end do
        tcfval(1)= tcfval(1) + energy/dble(N)
     end do
-    
+    deallocate(newp,grad)
 
     return
   end subroutine estimator
@@ -120,7 +124,7 @@ contains
   !function for initializing a path
   subroutine init_path(x, p, factors)
     double precision, intent(out):: x(:,:,:), p(:,:,:),factors
-    double precision, allocatable:: tempx(:),rk(:,:),rp(:)
+    double precision, allocatable:: tempx(:),rk(:,:),rp(:), grad(:,:,:)
     double precision::              stdev, potvals, ringpot, potdiff
     double precision::              prob, stdevharm, energy
     integer::                       i,j,k, idof, imin(1), inn
@@ -178,8 +182,10 @@ contains
        end do
     end do
     ringpot= 0.0d0
+    allocate(grad(N,1,natom))
     do k=1,n
        ringpot= ringpot+ pot(x(k,:,:))
+       call Vprime(x(k,:,:), grad(k,:,:))
     end do
     potdiff= (ringpot- potvals)
     write(*,*)potdiff, ringpot, potvals
@@ -188,12 +194,14 @@ contains
        energy=0.0d0
        do j=1,n
           prob= exp(-0.5d0*(x(j,1,i)-lattice(1,i+1))**2/width**2)/sqrt(2.0d0*pi*width**2)
-          energy= energy + prob*0.5d0*p(j,1,i)**3/mass(i)**2
+          energy= energy + prob*p(j,1,i)*grad(j,1,i)/mass(i)
+          ! energy= energy + prob*0.5d0*p(j,1,i)**2/mass(i)
+          ! energy= energy + prob*0.5d0*p(j,1,i)**3/mass(i)**2
        end do
        factors=factors+ energy/dble(n)
     end do
     factors=factors*min(exp(-betan*potdiff),1.0d0)
-    deallocate(tempx, rp, rk)
+    deallocate(tempx, rp, rk,grad)
     return
   end subroutine init_path
 
