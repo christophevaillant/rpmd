@@ -47,6 +47,7 @@ program rpmd
   gamma=1.0d0
   nestim=1
   ring=.true.
+  fixedends=.false.
   latticemass=.false.
   deltabeta=1.0d0
   outputtcf=.true.

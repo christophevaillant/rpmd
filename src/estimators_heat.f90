@@ -88,25 +88,25 @@ contains
     allocate(newp(1)) !TODO: multidimensional generalization to ndim
     tcfval(1)=0.0d0
     allocate(grad(N,1,natom))
-    call UNprime_ring(x, grad)
+    call UMprime(x, grad)
     do i=1, natom
        energy=0.0d0
        do j=1, N
-          prob= exp(-0.5d0*(x(j,1,i)-lattice(1,i+1))**2/width**2)/sqrt(2.0d0*pi*width**2)
-          energy= energy + prob*p(j,1,i)*grad(j,1,i)/mass(i)
+          ! prob= exp(-0.5d0*(x(j,1,i)-lattice(1,i+1))**2/width**2)/sqrt(2.0d0*pi*width**2)
+          energy= energy + p(j,1,i)*grad(j,1,i)/mass(i)
           ! energy= energy + prob*0.5d0*p(j,1,i)**2/mass(i)
           ! energy= energy + prob*0.5d0*p(j,1,i)**3/mass(i)**2
           !check the atom is still in the box!
           if (x(j,1,i) .lt. lattice(1,1)) then
              ! write(*,*) "left bounce", x(j,1,i), lattice(1,1)
              x(j,1,i)= lattice(1,1)
-             stdev= 1.0d0/sqrt(betanleft) !TODO: check that this shouldn't just be beta
+             stdev= 1.0d0/sqrt(betanleft)
              errcode_normal = vdrnggaussian(rmethod_normal,stream_normal,1,newp,0.0d0,stdev)
              p(j,1,i)= abs(newp(1))*sqrt(mass(i))
           else if (x(j,1,i) .gt. lattice(1,natom+2)) then
              ! write(*,*) "right bounce", x(j,1,i), lattice(1,natom+2)
              x(j,1,i)= lattice(1,Natom+2)
-             stdev= 1.0d0/sqrt(betanright) !TODO: check that this shouldn't just be beta
+             stdev= 1.0d0/sqrt(betanright)
              errcode_normal = vdrnggaussian(rmethod_normal,stream_normal,1,newp,0.0d0,stdev)
              !TODO: multidimensional generalization like for the directional langevin thermostat
              p(j,1,i)= -abs(newp(1))*sqrt(mass(i))
@@ -129,7 +129,7 @@ contains
     double precision::              prob, stdevharm, energy
     integer::                       i,j,k, idof, imin(1), inn
 
-    allocate(rp(n),tempx(n))
+    allocate(rp(n),tempx(1))
     allocate(rk(n,ndof))
     potvals=0.0d0
     stdev= 1.0d0/sqrt(betan)
@@ -167,9 +167,9 @@ contains
        do j=1,natom
           stdevharm= 1.0d0/sqrt(harm*mass(j))
           stdev= 1.0d0/sqrt(betan)
-          errcode_normal = vdrnggaussian(rmethod_normal,stream_normal,n,tempx,lattice(i,j+1),stdevharm)!sites
+          errcode_normal = vdrnggaussian(rmethod_normal,stream_normal,1,tempx,lattice(i,j+1),stdevharm)!sites
           errcode_normal = vdrnggaussian(rmethod_normal,stream_normal,n,p(:,i,j),0.0d0,stdev)!momenta
-          x(:,i,j)= x(:,i,j) + tempx(:)
+          x(:,i,j)= x(:,i,j) + tempx(1)
           p(:,i,j)= p(:,i,j)*sqrt(mass(j))
        end do
     end do
@@ -185,16 +185,16 @@ contains
     allocate(grad(N,1,natom))
     do k=1,n
        ringpot= ringpot+ pot(x(k,:,:))
-       call Vprime(x(k,:,:), grad(k,:,:))
     end do
     potdiff= (ringpot- potvals)
     write(*,*)potdiff, ringpot, potvals
     factors=0.0d0
+    call UMprime(x, grad)
     do i=1,natom
        energy=0.0d0
        do j=1,n
-          prob= exp(-0.5d0*(x(j,1,i)-lattice(1,i+1))**2/width**2)/sqrt(2.0d0*pi*width**2)
-          energy= energy + prob*p(j,1,i)*grad(j,1,i)/mass(i)
+          ! prob= exp(-0.5d0*(x(j,1,i)-lattice(1,i+1))**2/width**2)/sqrt(2.0d0*pi*width**2)
+          energy= energy + p(j,1,i)*grad(j,1,i)/mass(i)
           ! energy= energy + prob*0.5d0*p(j,1,i)**2/mass(i)
           ! energy= energy + prob*0.5d0*p(j,1,i)**3/mass(i)**2
        end do
