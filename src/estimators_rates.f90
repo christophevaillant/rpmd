@@ -139,7 +139,7 @@ contains
                 rk(k,idof)= rk(k,idof) +pos(k)/sqrt(transfreqs(idof))
              end do
           end if
-          ! rk(:,idof)= rk(:,idof) - centroid(rk(:,idof)) !pin centroid to barrier
+          rk(:,idof)= rk(:,idof) - centroid(rk(:,idof)) !pin centroid to barrier
     end do
     !---------------------------
     !transform to cartesian coordinates    
@@ -149,10 +149,10 @@ contains
     do i=1,ndim
        do j=1,natom
           errcode_normal = vdrnggaussian(rmethod_normal,stream_normal,n,p(:,i,j),0.0d0,stdev)!momenta
-          x(:,i,j)= (x(:,i,j)/sqrt(mass(j)))
+          x(:,i,j)= (x(:,i,j)/sqrt(mass(j)))+ transition(i,j)
           p(:,i,j)= p(:,i,j)*sqrt(mass(j))
           !pin centroid to barrier:
-          x(:,i,j)= x(:,i,j) - centroid(x(:,i,j)) + transition(i,j)
+          ! x(:,i,j)= x(:,i,j) - centroid(x(:,i,j)) + transition(i,j)
        end do
     end do
     !calculate real potential for each bead
