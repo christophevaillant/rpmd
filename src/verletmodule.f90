@@ -101,7 +101,7 @@ contains
        !----------------------------------------
        !Calculate the estimator for this step
        if (i .gt. imin) then
-          call estimator(xprop, vprop, tcf(:,i/Noutput))
+          call estimator(xprop, vprop, tcf(:,i))
        end if
     end do
     deallocate(pprop, tempv, tempp)
@@ -215,7 +215,7 @@ contains
     call step_langevin(vprop)
     call step_v(0.5d0*dt, xprop, vprop, force,.false.)
     call step_nm(dt,xprop,vprop ,.true.)
-    deallocate(force)
+    deallocate(force, pip)
     return
   end subroutine time_step_ffpile
 
@@ -337,7 +337,7 @@ contains
     double precision, allocatable:: p(:,:,:), pprop(:)
     integer:: i,j,k, dofi
 
-    allocate(p(n,ndim,natom), pprop(n))
+    allocate(p(n,ndim,natom), pprop(n*ndof))
     errcode_normal = vdrnggaussian(rmethod_normal,stream_normal,n*ndof,pprop,0.0d0,1.0d0)
     do i=1,ndim
        do j=1,natom
@@ -369,7 +369,7 @@ contains
     end do
     do i=1,ndim
        do j=1,natom
-          dofi= (j-1)*ndim +i
+          dofi= calcidof(i,j)
           if (.not. use_fft) then
              if (ring) then
                 call ring_transform_backward(p(:,i,j),vprop(:,i,j))
@@ -385,7 +385,7 @@ contains
           end if
        end do
     end do
-
+    deallocate(p,pprop)
   end subroutine step_langevin
 
   !-----------------------------------------------------
