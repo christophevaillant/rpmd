@@ -14,46 +14,44 @@ module estimators
   double precision, allocatable:: lambda(:,:), hess(:,:)
 
 contains
-
+  
   subroutine init_estimators()
     implicit none
     integer:: i,j,k,kk, idof
-    !TODO: estimatormod- implement list of estimators
 
     if (outputfbar) open(200,file="fbar.dat")
 
     ntime= NMC/Noutput
     allocate(whichestim(nestim))
-    allocate(lambda(ndof,n))
-    do idof=1, ndof
-       do k=1, n,2
-          kk=(k-1)/2
-          if (idof .eq. 1) then !skip unstable mode
-             if (kk.eq.0) then
-                lambda(idof, k)= (2.0*omegan*sin(pi*kk/N))**2
-             else
-                lambda(idof, k-1)= (2.0*omegan*sin(pi*kk/N))**2
-                lambda(idof, k)= (2.0*omegan*sin(pi*kk/N))**2
-             end if
-          else
-             lambda(idof, k)= ((4.0*omegan**2 + 2.0*transfreqs(idof)) &
-                  - 4.0*omegan**2*cos(2.0*pi*kk/n))
-             if (k.gt.1) &
-                  lambda(idof, k-1)= ((4.0*omegan**2 + 2.0*transfreqs(idof)) &
-                  - 4.0*omegan**2*cos(2.0*pi*kk/n))
-          end if
-          if (mod(n,2).eq.0) then
-             ! kk=n/2
-             ! if (idof .eq. 1 .and. ndof .eq. 1) then
-             ! lambda(idof, n)= (2.0*omegan*sin(pi*kk/N))**2
-             ! else
-             lambda(idof, n)= ((4.0*omegan**2 + 2.0*transfreqs(idof)/mass(1)) &
-                  - 4.0*omegan**2*cos(2.0*pi*kk/n))
-          end if
-       end do
-    end do
-    ! write(*,*) lambda
-    ! write(*,*) transfreqs
+    ! allocate(lambda(ndof,n))
+    ! do idof=1, ndof
+    !    do k=1, n,2
+    !       kk=(k-1)/2
+    !       if (idof .eq. 1) then !skip unstable mode
+    !          if (kk.eq.0) then
+    !             lambda(idof, k)= (2.0*omegan*sin(pi*kk/N))**2
+    !          else
+    !             lambda(idof, k-1)= (2.0*omegan*sin(pi*kk/N))**2
+    !             lambda(idof, k)= (2.0*omegan*sin(pi*kk/N))**2
+    !          end if
+    !       else
+    !          lambda(idof, k)= ((4.0*omegan**2 + 2.0*transfreqs(idof)) &
+    !               - 4.0*omegan**2*cos(2.0*pi*kk/n))
+    !          if (k.gt.1) &
+    !               lambda(idof, k-1)= ((4.0*omegan**2 + 2.0*transfreqs(idof)) &
+    !               - 4.0*omegan**2*cos(2.0*pi*kk/n))
+    !       end if
+    !       if (mod(n,2).eq.0) then
+    !          ! kk=n/2
+    !          ! if (idof .eq. 1 .and. ndof .eq. 1) then
+    !          ! lambda(idof, n)= (2.0*omegan*sin(pi*kk/N))**2
+    !          ! else
+    !          lambda(idof, n)= ((4.0*omegan**2 + 2.0*transfreqs(idof)/mass(1)) &
+    !               - 4.0*omegan**2*cos(2.0*pi*kk/n))
+    !       end if
+    !    end do
+    ! end do
+    return
   end subroutine init_estimators
 
   subroutine finalize_estimators()
@@ -139,7 +137,7 @@ contains
                 rk(k,idof)= rk(k,idof) +pos(k)/sqrt(transfreqs(idof))
              end do
           end if
-          rk(:,idof)= rk(:,idof) - centroid(rk(:,idof)) !pin centroid to barrier
+          ! rk(:,idof)= rk(:,idof) - centroid(rk(:,idof)) !pin centroid to barrier
     end do
     !---------------------------
     !transform to cartesian coordinates    
@@ -149,7 +147,7 @@ contains
     do i=1,ndim
        do j=1,natom
           errcode_normal = vdrnggaussian(rmethod_normal,stream_normal,n,p(:,i,j),0.0d0,stdev)!momenta
-          x(:,i,j)= (x(:,i,j)/sqrt(mass(j)))+ transition(i,j)
+          x(:,i,j)= (x(:,i,j)/sqrt(mass(j))) - centroid(x(:,i,j)) + transition(i,j)
           p(:,i,j)= p(:,i,j)*sqrt(mass(j))
           !pin centroid to barrier:
           ! x(:,i,j)= x(:,i,j) - centroid(x(:,i,j)) + transition(i,j)
