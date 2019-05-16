@@ -18,10 +18,10 @@ contains
 
     read(5, nml=POTDATA)
 
-    allocate(lattice(1,natom+2))
-    do i=1, natom+2
-       lattice(1,i+1)= i*spacing
-       write(*,*)i, lattice(1,i+1)
+    allocate(lattice(1,natom))
+    do i=1, natom
+       lattice(1,i)= i*spacing
+       write(*,*)i, lattice(1,i)
     end do
 
     return
@@ -35,7 +35,7 @@ contains
     pot=0.0d0
     !lattice potential
     do i=1, natom
-       pot= pot + 0.5d0*mass(i)*harm**2*(lattice(1,i+1)-x(1,i))**2
+       pot= pot + 0.5d0*mass(i)*harm**2*(lattice(1,i)-x(1,i))**2
     end do
     !interatomic potential
     do i=1, natom-1
@@ -52,7 +52,7 @@ contains
     double precision::     grad(:,:), x(:,:)
 
     do i=1, natom
-       grad(1,i)= mass(i)*harm**2*(x(1,i)-lattice(1,i+1))
+       grad(1,i)= mass(i)*harm**2*(x(1,i)-lattice(1,i))
        if (i.eq.1) then
           grad(1,i)= grad(1,i)+ mass(i)*interharm**2*(x(1,i)- x(1,i+1))
        else if (i.eq.natom) then

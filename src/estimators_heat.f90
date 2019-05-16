@@ -103,9 +103,9 @@ contains
              stdev= 1.0d0/sqrt(betanleft)
              errcode_normal = vdrnggaussian(rmethod_normal,stream_normal,1,newp,0.0d0,stdev)
              p(j,1,i)= abs(newp(1))*sqrt(mass(i))
-          else if (x(j,1,i) .gt. lattice(1,natom+2)) then
+          else if (x(j,1,i) .gt. lattice(1,natom)) then
              ! write(*,*) "right bounce", x(j,1,i), lattice(1,natom+2)
-             x(j,1,i)= lattice(1,Natom+2)
+             x(j,1,i)= lattice(1,Natom)
              stdev= 1.0d0/sqrt(betanright)
              errcode_normal = vdrnggaussian(rmethod_normal,stream_normal,1,newp,0.0d0,stdev)
              !TODO: multidimensional generalization like for the directional langevin thermostat
@@ -165,11 +165,12 @@ contains
     !transform to global cartesian coordinates    
     do i=1,ndim
        do j=1,natom
+          idof= calcidof(i,j)
           stdevharm= 1.0d0/sqrt(harm*mass(j))
           stdev= 1.0d0/sqrt(betan)
-          errcode_normal = vdrnggaussian(rmethod_normal,stream_normal,1,tempx,lattice(i,j+1),stdevharm)!sites
+          errcode_normal = vdrnggaussian(rmethod_normal,stream_normal,1,tempx,lattice(i,j),stdevharm)!sites
           errcode_normal = vdrnggaussian(rmethod_normal,stream_normal,n,p(:,i,j),0.0d0,stdev)!momenta
-          x(:,i,j)= x(:,i,j) + tempx(1)
+          x(:,i,j)= rk(:,idof) + tempx(1)
           p(:,i,j)= p(:,i,j)*sqrt(mass(j))
        end do
     end do
@@ -186,8 +187,8 @@ contains
     do k=1,n
        ringpot= ringpot+ pot(x(k,:,:))
     end do
-    potdiff= (ringpot- potvals)
-    write(*,*)potdiff, ringpot, potvals
+    potdiff= (ringpot- potvals)/dble(natom)
+    ! write(*,*) ringpot, potvals, potdiff
     factors=0.0d0
     call UMprime(x, grad)
     do i=1,natom
@@ -201,6 +202,7 @@ contains
        factors=factors+ energy/dble(n)
     end do
     factors=factors*min(exp(-betan*potdiff),1.0d0)
+    ! factors=1.0d0
     deallocate(tempx, rp, rk,grad)
     return
   end subroutine init_path
