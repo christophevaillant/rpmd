@@ -114,13 +114,6 @@ contains
              end if
           end do
           !---------------------------
-          !calculate contribution from the approximate harmonic potential at the barrier
-          if (idof .gt. 1) then
-             do k=1,n
-                potvals= potvals+0.5d0*transfreqs(idof)*rp(k)**2
-             end do
-          end if
-          !---------------------------
           !transform to non-ring polymer normal mode coords
           if (ring) then
              if (use_fft) then
@@ -138,19 +131,26 @@ contains
              end do
           end if
           ! rk(:,idof)= rk(:,idof) - centroid(rk(:,idof)) !pin centroid to barrier
+          !---------------------------
+          !calculate contribution from the approximate harmonic potential at the barrier
+          if (idof .gt. 1) then
+             do k=1,n
+                potvals= potvals+0.5d0*transfreqs(idof)*rk(k,idof)**2
+             end do
+          end if
     end do
     !---------------------------
     !transform to cartesian coordinates    
     do k=1,n
-       x(k,:,:)= reshape(matmul(hess,rk(k,:)),(/ndim,natom/))
+       x(k,:,:)= reshape(matmul(transpose(hess),rk(k,:)),(/ndim,natom/))
     end do
     do i=1,ndim
        do j=1,natom
           errcode_normal = vdrnggaussian(rmethod_normal,stream_normal,n,p(:,i,j),0.0d0,stdev)!momenta
-          x(:,i,j)= (x(:,i,j)/sqrt(mass(j))) - centroid(x(:,i,j)) + transition(i,j)
+          x(:,i,j)= (x(:,i,j)/sqrt(mass(j)))
           p(:,i,j)= p(:,i,j)*sqrt(mass(j))
           !pin centroid to barrier:
-          ! x(:,i,j)= x(:,i,j) - centroid(x(:,i,j)) + transition(i,j)
+          x(:,i,j)= x(:,i,j) - centroid(x(:,i,j)) + transition(i,j)
        end do
     end do
     !calculate real potential for each bead
