@@ -92,12 +92,12 @@ contains
   subroutine init_path(x, p, factors)
     double precision, intent(out):: x(:,:,:), p(:,:,:),factors
     double precision, allocatable::   vel(:), tempp(:), pos(:), tempx(:)
-    double precision, allocatable::  rk(:,:), pk(:,:), rp(:)
-    double precision::                stdev, potvals, ringpot, potdiff, poscent
+    double precision, allocatable::  rk(:,:), pk(:), rp(:)
+    double precision::                stdev, potvals, ringpot, potdiff, poscent, ringpols
     integer::                         i,j,k, idof, imin(1), inn
 
     allocate(tempp(n), vel(n),pos(n), rp(n),tempx(n))
-    allocate(rk(n,ndof),pk(n,ndof))
+    allocate(rk(n,ndof),pk(n))
     potvals=0.0d0
     stdev= 1.0d0/sqrt(betan)
     do idof=1, ndof
@@ -106,11 +106,12 @@ contains
           errcode_normal = vdrnggaussian(rmethod_normal,stream_normal,n,rp,0.0d0,stdev)!ringpolymer
           !---------------------------
           !scale them to have the right standard deviation
+          ringpols= 0.0d0
           do k=1, n
              if (k.eq. 1) then
                 rp(k)= 0.0d0
              else
-                rp(k)= rp(k)/lam(k)
+                rp(k)= rp(k)/(lam(k))
              end if
           end do
           !---------------------------
@@ -124,18 +125,13 @@ contains
           else
              call linear_transform_backward(rp, rk(:,idof), idof)
           end if
+          !---------------------------
+          !produce random positions in DoFs orthogonal to unstable mode
           if (idof .gt. 1) then
              errcode_normal = vdrnggaussian(rmethod_normal,stream_normal,n,pos,0.0d0,stdev)
              do k=1,n
-                rk(k,idof)= rk(k,idof) +pos(k)/sqrt(transfreqs(idof))
-             end do
-          end if
-          ! rk(:,idof)= rk(:,idof) - centroid(rk(:,idof)) !pin centroid to barrier
-          !---------------------------
-          !calculate contribution from the approximate harmonic potential at the barrier
-          if (idof .gt. 1) then
-             do k=1,n
-                potvals= potvals+0.5d0*transfreqs(idof)*rk(k,idof)**2
+                rk(k,idof)= rk(k,idof) +pos(k)/sqrt(abs(transfreqs(idof)))
+                potvals= potvals+(0.5d0*mass(1)*transfreqs(idof)*pos(k)**2  + V0)/dble(N)
              end do
           end if
     end do
@@ -146,8 +142,8 @@ contains
     end do
     do i=1,ndim
        do j=1,natom
-          errcode_normal = vdrnggaussian(rmethod_normal,stream_normal,n,p(:,i,j),0.0d0,stdev)!momenta
-          x(:,i,j)= (x(:,i,j)/sqrt(mass(j)))
+          errcode_normal = vdrnggaussian(rmethod_normal,stream_normal,n,pk(:),0.0d0,stdev)!momenta
+          x(:,i,j)= x(:,i,j/sqrt(mass(j)))!mass comes from not having included in ringpolymer and normal mode generation
           p(:,i,j)= p(:,i,j)*sqrt(mass(j))
           !pin centroid to barrier:
           x(:,i,j)= x(:,i,j) - centroid(x(:,i,j)) + transition(i,j)
@@ -156,9 +152,11 @@ contains
     !calculate real potential for each bead
     ringpot= 0.0d0
     do k=1,n
+       ! write(*,*) k, x(k,:,:),pot(x(k,:,:))
        ringpot= ringpot+ pot(x(k,:,:))
     end do
     potdiff= (ringpot- potvals) !potvals is 0 for 1d
+    ! write(*,*) ringpot, potvals, potdiff,exp(-betan*potdiff)
     factors=exp(-betan*potdiff)*centroid(p(:,1,1))/mass(1)
 
     deallocate(vel, tempp,pos, tempx)

@@ -197,8 +197,10 @@ contains
              transmatrix(i,l+1)= ((-1.0d0)**l)/sqrt(dble(n))
           end do
        end if
-
     end if
+    do i=1,n
+       write(*,*) i, lam(i)
+    end do
   end subroutine init_nm
 
   !-----------------------------------------------------
