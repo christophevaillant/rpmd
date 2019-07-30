@@ -754,11 +754,11 @@ subroutine findnormal(x, hess, freqs,normal)
      do j=1, ndim
         idof= calcidof(i,j)
         normal(j,i)= hess(1,idof)
-        if (hess(1,1) .gt. 0.0) then
+        ! if (hess(1,1) .gt. 0.0) then
            normal(j,i)= hess(1,idof)
-        else
-           normal(j,i)= -hess(1,idof)
-        end if
+        ! else
+        !    normal(j,i)= -hess(1,idof)
+        ! end if
      end do
   end do
 

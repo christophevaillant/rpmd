@@ -98,7 +98,7 @@ contains
 
     allocate(tempp(n), vel(n),pos(n), rp(n),tempx(n))
     allocate(rk(n,ndof),pk(n))
-    potvals=0.0d0
+    potvals=0.0d0!V0*dble(N)
     stdev= 1.0d0/sqrt(betan)
     do idof=1, ndof
           !---------------------------
@@ -131,10 +131,11 @@ contains
              errcode_normal = vdrnggaussian(rmethod_normal,stream_normal,n,pos,0.0d0,stdev)
              do k=1,n
                 rk(k,idof)= rk(k,idof) +pos(k)/sqrt(abs(transfreqs(idof)))
-                potvals= potvals+(0.5d0*mass(1)*transfreqs(idof)*pos(k)**2  + V0)/dble(N)
+                potvals= potvals+0.5d0*transfreqs(idof)*pos(k)**2
              end do
           end if
     end do
+
     !---------------------------
     !transform to cartesian coordinates    
     do k=1,n
@@ -143,10 +144,8 @@ contains
     do i=1,ndim
        do j=1,natom
           errcode_normal = vdrnggaussian(rmethod_normal,stream_normal,n,pk(:),0.0d0,stdev)!momenta
-          x(:,i,j)= x(:,i,j/sqrt(mass(j)))!mass comes from not having included in ringpolymer and normal mode generation
-          p(:,i,j)= p(:,i,j)*sqrt(mass(j))
-          !pin centroid to barrier:
-          x(:,i,j)= x(:,i,j) - centroid(x(:,i,j)) + transition(i,j)
+          x(:,i,j)= x(:,i,j/sqrt(mass(j))) + transition(i,j)!mass comes from not having included in ringpolymer and normal mode generation
+          p(:,i,j)= pk(:)*sqrt(mass(j))
        end do
     end do
     !calculate real potential for each bead
@@ -157,7 +156,8 @@ contains
     end do
     potdiff= (ringpot- potvals) !potvals is 0 for 1d
     ! write(*,*) ringpot, potvals, potdiff,exp(-betan*potdiff)
-    factors=exp(-betan*potdiff)*centroid(p(:,1,1))/mass(1)
+    factors=min(exp(-betan*potdiff),1.0d0)*centroid(p(:,1,1))/mass(1)
+    factors= factors/sqrt(2.0d0*pi*beta/mass(1))
 
     deallocate(vel, tempp,pos, tempx)
 
