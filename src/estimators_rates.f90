@@ -89,8 +89,8 @@ contains
   !-----------------------------------------------------
   !-----------------------------------------------------
   !function for initializing a path
-  subroutine init_path(x, p, factors)
-    double precision, intent(out):: x(:,:,:), p(:,:,:),factors
+  subroutine init_path(x, p, factors, weight)
+    double precision, intent(out):: x(:,:,:), p(:,:,:),factors, weight
     double precision, allocatable::   vel(:), tempp(:), pos(:), tempx(:)
     double precision, allocatable::  rk(:,:), pk(:), rp(:)
     double precision::                stdev, potvals, ringpot, potdiff, poscent, ringpols
@@ -98,7 +98,7 @@ contains
 
     allocate(tempp(n), vel(n),pos(n), rp(n),tempx(n))
     allocate(rk(n,ndof),pk(n))
-    potvals=0.0d0!V0*dble(N)
+    potvals=V0*dble(N)
     stdev= 1.0d0/sqrt(betan)
     do idof=1, ndof
           !---------------------------
@@ -113,6 +113,7 @@ contains
              else
                 rp(k)= rp(k)/(lam(k))
              end if
+             potvals= potvals+0.5d0*(lam(k)*rp(k))**2
           end do
           !---------------------------
           !transform to non-ring polymer normal mode coords
@@ -144,21 +145,21 @@ contains
     do i=1,ndim
        do j=1,natom
           errcode_normal = vdrnggaussian(rmethod_normal,stream_normal,n,pk(:),0.0d0,stdev)!momenta
-          x(:,i,j)= x(:,i,j/sqrt(mass(j))) + transition(i,j)!mass comes from not having included in ringpolymer and normal mode generation
+          x(:,i,j)= x(:,i,j)/sqrt(mass(j)) + transition(i,j)!mass comes from not having included in ringpolymer and normal mode generation
           p(:,i,j)= pk(:)*sqrt(mass(j))
        end do
     end do
     !calculate real potential for each bead
-    ringpot= 0.0d0
-    do k=1,n
-       ! write(*,*) k, x(k,:,:),pot(x(k,:,:))
-       ringpot= ringpot+ pot(x(k,:,:))
-    end do
-    potdiff= (ringpot- potvals) !potvals is 0 for 1d
+    ringpot= UM(x)!0.0d0
+    ! do k=1,n
+    !    ! write(*,*) k, x(k,:,:),pot(x(k,:,:))
+    !    ringpot= ringpot+ pot(x(k,:,:))
+    ! end do
+    potdiff= (potvals-ringpot) !potvals is 0 for 1d
     ! write(*,*) ringpot, potvals, potdiff,exp(-betan*potdiff)
-    factors=min(exp(-betan*potdiff),1.0d0)*centroid(p(:,1,1))/mass(1)
-    factors= factors/sqrt(2.0d0*pi*beta/mass(1))
-
+    factors=centroid(p(:,1,1))/mass(1)
+    ! factors= factors/sqrt(2.0d0*pi*beta/mass(1))
+    weight=min(exp(-betan*potdiff),1.0d0)
     deallocate(vel, tempp,pos, tempx)
 
     return

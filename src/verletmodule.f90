@@ -198,9 +198,9 @@ contains
           end do
        end if
     end if
-    do i=1,n
-       write(*,*) i, lam(i)
-    end do
+    ! do i=1,n
+    !    write(*,*) i, lam(i)
+    ! end do
   end subroutine init_nm
 
   !-----------------------------------------------------

@@ -107,18 +107,19 @@ program rpmd
   !Main loop
   do ii=1, nrep
      tcf(:,:)=0.0d0
-     call init_path(x,p, tcf0)
+     call init_path(x,p, tcf0, weight)
      if (outputfbar) then
         p0(:,:,:)=p(:,:,:)
         q0(:,:,:)=x(:,:,:)
      end if
+     totalweight=totalweight+weight
      call propagator(x,p,tcf)
      do i=1, nestim
         do j=1,ntime
            totaltcf(i,j)= totaltcf(i,j) + tcf(i,j)*tcf0
         end do
      end do
-     if (iprint) write(*,*) ii, tcf0
+     if (iprint) write(*,*) ii, tcf0, weight, totalweight
      !Optional output of f1 and fbar to check stats
      if (outputfbar) then
         allocate(v(ndim,natom))
@@ -143,9 +144,9 @@ program rpmd
 
   !------------------------------------
   !Finalize and write out
-  totaltcf(:,:)= totaltcf(:,:)/dble(nrep)
+  totaltcf(:,:)= totaltcf(:,:)/totalweight !dble(nrep)
   write(*,*) "Reactant partition function:", calcpartition()
-  write(*,*) "Final rate:", totaltcf(1,ntime)
+  write(*,*) "Final rate:", totaltcf(1,ntime)/calcpartition()
   if (outputtcf) then
      open(100, file="timecorrelation.dat")
      do i=1, ntime
