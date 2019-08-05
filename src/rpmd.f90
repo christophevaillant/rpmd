@@ -116,7 +116,7 @@ program rpmd
      call propagator(x,p,tcf)
      do i=1, nestim
         do j=1,ntime
-           totaltcf(i,j)= totaltcf(i,j) + tcf(i,j)*tcf0
+           totaltcf(i,j)= totaltcf(i,j) + tcf(i,j)*tcf0*weight
         end do
      end do
      if (iprint) write(*,*) ii, tcf0, weight, totalweight

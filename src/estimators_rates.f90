@@ -1,6 +1,7 @@
 module estimators
   use general
   use instantonmod
+  use potential
 
   implicit none
 
@@ -58,7 +59,7 @@ contains
     implicit none
     if (outputfbar) close(200)
     deallocate(whichestim)
-    deallocate(lambda)
+    ! deallocate(lambda)
   end subroutine finalize_estimators
 
   subroutine estimator(x,p,tcfval)
