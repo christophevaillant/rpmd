@@ -99,12 +99,18 @@ contains
 
     allocate(tempp(n), vel(n),pos(n), rp(n),tempx(n))
     allocate(rk(n,ndof),pk(n))
-    potvals=V0*dble(N)
+    x(:,:,:)=0.0d0
+    p(:,:,:)=0.0d0
+    if (ndof .gt. 1) then
+       potvals=V0*dble(N)
+    else
+       potvals=0.0d0
+    end if
     stdev= 1.0d0/sqrt(betan)
     do idof=1, ndof
           !---------------------------
           !generate random numbers for chain
-          errcode_normal = vdrnggaussian(rmethod_normal,stream_normal,n,rp,0.0d0,stdev)!ringpolymer
+          errcode_normal = vdrnggaussian(rmethod_normal,stream_normal,n,rp,0.0d0,1.0d0)!ringpolymer
           !---------------------------
           !scale them to have the right standard deviation
           ringpols= 0.0d0
@@ -112,9 +118,9 @@ contains
              if (k.eq. 1) then
                 rp(k)= 0.0d0
              else
-                rp(k)= rp(k)/(lam(k))
+                rp(k)= rp(k)/(sqrt(betan*mass(1))*lam(k))
              end if
-             potvals= potvals+0.5d0*(lam(k)*rp(k))**2
+             ! potvals= potvals+0.5d0*mass(1)*(lam(k)*rp(k))**2
           end do
           !---------------------------
           !transform to non-ring polymer normal mode coords
@@ -130,37 +136,56 @@ contains
           !---------------------------
           !produce random positions in DoFs orthogonal to unstable mode
           if (idof .gt. 1) then
-             errcode_normal = vdrnggaussian(rmethod_normal,stream_normal,n,pos,0.0d0,stdev)
+             errcode_normal = vdrnggaussian(rmethod_normal,stream_normal,N,pos,0.0d0,stdev)
              do k=1,n
-                rk(k,idof)= rk(k,idof) +pos(k)/sqrt(abs(transfreqs(idof)))
-                potvals= potvals+0.5d0*transfreqs(idof)*pos(k)**2
+                rk(1,idof)= rk(1,idof) +pos(k)/sqrt(mass(1)*abs(transfreqs(idof)))
+                potvals= potvals+0.5d0*mass(1)*transfreqs(idof)*pos(k)**2
              end do
           end if
-    end do
+       end do
 
     !---------------------------
-    !transform to cartesian coordinates    
-    do k=1,n
-       x(k,:,:)= reshape(matmul(transpose(hess),rk(k,:)),(/ndim,natom/))
-    end do
+    !transform to cartesian coordinates
+    if (idof .gt.1) then
+       do k=1,n
+          x(k,:,:)= reshape(matmul(transpose(hess),rk(k,:)),(/ndim,natom/))
+       end do
+    else
+       do k=1,n
+          x(k,1,1)= rk(k,1)
+       end do
+    end if
     do i=1,ndim
        do j=1,natom
           errcode_normal = vdrnggaussian(rmethod_normal,stream_normal,n,pk(:),0.0d0,stdev)!momenta
-          x(:,i,j)= x(:,i,j)/sqrt(mass(j)) + transition(i,j)!mass comes from not having included in ringpolymer and normal mode generation
-          p(:,i,j)= pk(:)*sqrt(mass(j))
+          pk(:)= pk(:)*sqrt(mass(j))
+          if (ring) then
+             if (use_fft) then
+                call ring_transform_backward_nr(pk, p(:,i,j))
+             else
+                call ring_transform_backward(pk, p(:,i,j))
+             end if
+          else
+             call linear_transform_backward(pk, p(:,i,j), idof)
+          end if
+       end do
+    end do
+
+    do i=1, ndim
+       do j=1, natom
+          x(:,i,j)= x(:,i,j) + transition(i,j)- centroid(x(:,i,j))
        end do
     end do
     !calculate real potential for each bead
-    ringpot= UM(x)!0.0d0
-    ! do k=1,n
-    !    ! write(*,*) k, x(k,:,:),pot(x(k,:,:))
-    !    ringpot= ringpot+ pot(x(k,:,:))
-    ! end do
-    potdiff= (potvals-ringpot) !potvals is 0 for 1d
-    ! write(*,*) ringpot, potvals, potdiff,exp(-betan*potdiff)
+    ringpot= 0.0d0!UM(x)!
+    do k=1,n
+       ringpot= ringpot+ pot(x(k,:,:))
+    end do
+    potdiff= (ringpot-potvals)
+    ! write(*,*) ringpot, potvals, potdiff,betan*potdiff,exp(betan*potdiff)
     factors=centroid(p(:,1,1))/mass(1)
     ! factors= factors/sqrt(2.0d0*pi*beta/mass(1))
-    weight=min(exp(-betan*potdiff),1.0d0)
+    weight=exp(-betan*ringpot)
     deallocate(vel, tempp,pos, tempx)
 
     return
