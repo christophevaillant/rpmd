@@ -101,11 +101,7 @@ contains
     allocate(rk(n,ndof),pk(n))
     x(:,:,:)=0.0d0
     p(:,:,:)=0.0d0
-    if (ndof .gt. 1) then
-       potvals=V0*dble(N)
-    else
-       potvals=0.0d0
-    end if
+    potvals=0.0d0
     stdev= 1.0d0/sqrt(betan)
     do idof=1, ndof
           !---------------------------
@@ -139,7 +135,7 @@ contains
              errcode_normal = vdrnggaussian(rmethod_normal,stream_normal,N,pos,0.0d0,stdev)
              do k=1,n
                 rk(1,idof)= rk(1,idof) +pos(k)/sqrt(mass(1)*abs(transfreqs(idof)))
-                potvals= potvals+0.5d0*mass(1)*transfreqs(idof)*pos(k)**2
+                potvals= potvals+V0+0.5d0*mass(1)*transfreqs(idof)*pos(k)**2
              end do
           end if
        end do

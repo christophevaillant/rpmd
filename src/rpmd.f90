@@ -152,6 +152,7 @@ program rpmd
   write(*,*) "Final rate:", totaltcf(1,ntime)
   write(*,*) "Final rate (ms^-1):", 2.187730d6*totaltcf(1,ntime)
   write(*,*) "Total weight:", totalweight
+  write(*,*) "QTST estimate:", totaltcf(1,1)
   if (outputtcf) then
      open(100, file="timecorrelation.dat")
      do i=1, ntime
