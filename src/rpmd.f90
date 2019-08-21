@@ -13,8 +13,8 @@ program rpmd
   integer::                        i1,i2,j1,j2,idof1,idof2
   integer::                        idof,ii
   integer::                        time1, time2,irate, imax
-  double precision::               answer,sigmaA, weight, averagex, qr
-  double precision::               tcf0, totalweight,s, ringpot
+  double precision::               avcontr,sigma,currentsigma, weight, averagex, qr
+  double precision::               tcf0, contr,totalweight,s, ringpot, classical
   double precision, allocatable::  x(:,:,:), p(:,:,:), totaltcf(:,:)
   double precision, allocatable::  v(:,:),p0(:,:,:),q0(:,:,:)
   !lapack variables
@@ -103,12 +103,25 @@ program rpmd
   totaltcf(:,:)=0.0d0
   totalweight=0.0d0
   averagex=0.0d0
+  avcontr=0.0d0
   !--------------------
   !Main loop
   qr=calcpartition()
   do ii=1, nrep
      tcf(:,:)=0.0d0
-     call init_path(x,p, tcf0, weight)
+     weight=1.0
+     currentsigma= sqrt(sigma/dble(ii) - (avcontr/dble(ii))**2)
+     contr=1.0d50 !big number
+     if (ii.gt. 100) then
+        do while (abs(contr) .gt. 5.0d0*currentsigma)
+           call init_path(x,p, tcf0, weight)
+           contr=tcf0*weight        
+        end do
+     else 
+        call init_path(x,p, tcf0, weight)
+     end if
+     avcontr= avcontr+ weight*tcf0
+     sigma= sigma+ (weight*tcf0)**2
      if(centroid(p(:,1,1)).gt.0)  averagex=averagex+tcf0*weight
      if (outputfbar) then
         p0(:,:,:)=p(:,:,:)
@@ -121,7 +134,7 @@ program rpmd
            totaltcf(i,j)= totaltcf(i,j) + tcf(i,j)*tcf0*weight
         end do
      end do
-     if (iprint) write(*,*) ii,centroid(x(:,1,1)),centroid(p(:,1,1)), tcf0, weight, totalweight/dble(ii), totaltcf(1,ntime)/dble(ii)
+     if (iprint) write(*,*) ii, tcf0, weight,contr,avcontr/dble(ii), currentsigma, totaltcf(1,1)/dble(ii)
      !Optional output of f1 and fbar to check stats
      if (outputfbar) then
         allocate(v(ndim,natom))
@@ -147,12 +160,13 @@ program rpmd
   !------------------------------------
   !Finalize and write out
   totaltcf(:,:)= totaltcf(:,:)/dble(nrep) !partition function cancels in 1D
+  write(*,*) "V0=", V0
   write(*,*) "Beta, betan=", beta, betan
   write(*,*) "Reactant partition function:", qr
   write(*,*) "Final rate:", totaltcf(1,ntime)
   write(*,*) "Final rate (ms^-1):", 2.187730d6*totaltcf(1,ntime)
   write(*,*) "Total weight:", totalweight
-  write(*,*) "QTST estimate:", totaltcf(1,1)
+  write(*,*) "QTST estimate:", totaltcf(1,1), "+/-",sqrt(sigma/dble(nrep) - totaltcf(1,1)**2)
   if (outputtcf) then
      open(100, file="timecorrelation.dat")
      do i=1, ntime
@@ -161,8 +175,9 @@ program rpmd
      close(100)
   end if
   if (ndof.eq.1) then
-     write(*,*) "classical TST=", exp(-beta*V0)/sqrt(2.0d0*pi*beta*mass(1))
-     write(*,*) "classical correction factor=",totaltcf(1,ntime)*sqrt(2.0d0*pi*beta*mass(1))*exp(beta*V0)
+     classical=exp(-beta*V0)/sqrt(2.0d0*pi*beta*mass(1)) !this includes division by Qr!
+     write(*,*) "classical TST=", classical
+     write(*,*) "classical correction factor=",totaltcf(1,ntime)/classical
   end if
   call free_nm()
   call finalize_estimators()

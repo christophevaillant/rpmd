@@ -1,13 +1,25 @@
 module potential
   use general
   implicit none
-  double precision::               V0, Vheight, x0
+  double precision::               V0, Aeck, Beck, x0
+
+  public
 
 contains
   subroutine V_init()
-    Vheight=1.56185d-2
-    x0=0.735d0
-    V0=Vheight
+    double precision:: xdagger
+    namelist /POTDATA/ Aeck, Beck, x0
+    !set default params
+    Aeck=-18.0d0/pi !Asymmetric
+    Beck=13.5d0/pi !Symmetric
+    x0=8.0d0/sqrt(3.0d0*pi)
+
+    read(5, nml=POTDATA)
+
+    xdagger=atanh(0.25*Aeck/Beck)*x0
+    V0= Aeck/(1.0+ exp(-2.0*xdagger/x0)) + Beck/cosh(xdagger/x0)**2
+
+
     return
   end subroutine V_init
   !---------------------------------------------------------------------
@@ -16,9 +28,9 @@ contains
     double precision::     pot, x(:,:)
     integer::              i,j
 
-    !sum only there to make arrays fit
-    pot= Vheight/cosh(x(1,1)/x0)**2 !- V0
-
+    pot= Aeck/(1.0d0+ exp(-2.0d0*x(1,1)/x0))
+    pot= pot +Beck/cosh(x(1,1)/x0)**2
+    
     return
   end function POT
 
@@ -28,7 +40,8 @@ contains
     integer::              i,j
     double precision::     grad(:,:), x(:,:)
 
-    grad(:,:)= -2.0d0*Vheight*(tanh(x(:,:)/x0)/cosh(x(:,:)/x0)**2)/x0
+    grad(:,:)= Aeck/(x0*(1.0d0+ cosh(2.0d0*x(:,:)/x0)))
+    grad(:,:)=grad(:,:) -2.0d0*Beck*(tanh(x(:,:)/x0)/cosh(x(:,:)/x0)**2)/x0
 
     return
   end subroutine Vprime
@@ -39,7 +52,10 @@ contains
     double precision::     hess(:,:,:,:), x(:,:), dummy1, eps
     integer::              i, j
 
-    hess(1,1,1,1)= Vheight*(4.0d0*(tanh(x(1,1)/x0)/cosh(x(1,1)/x0))**2 -&
+    hess(1,1,1,1)= -Aeck*tanh(x(1,1)/x0)/(x0*cosh(x(1,1)/x0))**2
+
+    hess(1,1,1,1)= hess(1,1,1,1)+ &
+         Beck*(4.0d0*(tanh(x(1,1)/x0)/cosh(x(1,1)/x0))**2 -&
          2.0d0/cosh(x(1,1)/x0)**4)/x0**2
 
     return

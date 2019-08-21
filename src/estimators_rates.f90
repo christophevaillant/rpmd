@@ -82,7 +82,7 @@ contains
     else
        tcfval=0.0d0
     end if
-
+    ! write(*,*) centroid(x(:,1,1)), transition(1,1), s, tcfval
     deallocate(v)
     return
   end subroutine estimator
@@ -181,7 +181,14 @@ contains
     ! write(*,*) ringpot, potvals, potdiff,betan*potdiff,exp(betan*potdiff)
     factors=centroid(p(:,1,1))/mass(1)
     ! factors= factors/sqrt(2.0d0*pi*beta/mass(1))
-    weight=exp(-betan*ringpot)
+    weight=min(1.0d0,exp(-betan*ringpot))
+    ! if (weight .gt. 0.1) then
+    !    write(*,*) "Weight:", weight
+    !    write(*,*) "Centroids:", centroid(x(:,1,1)), centroid(p(:,1,1))
+    !    write(*,*) "x:",x(:,1,1)
+    !    write(*,*) "p:",p(:,1,1)
+    !    stop
+    ! end if
     deallocate(vel, tempp,pos, tempx)
 
     return
