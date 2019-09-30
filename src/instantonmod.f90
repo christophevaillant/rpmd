@@ -47,10 +47,12 @@ contains
   end function UM
 
   !---------------------------------------------------------------------
-  subroutine UMprime(x,a,b, answer)
+  subroutine UMprime(x, answer,a,b)
     implicit none
     integer::            i,j,k
-    double precision::   x(:,:,:), answer(:,:,:),a(:,:),b(:,:)
+    double precision, intent(in)::   x(:,:,:)
+    double precision, intent(in), optional:: a(:,:),b(:,:)
+    double precision, intent(out):: answer(:,:,:)
     double precision,allocatable:: grad(:,:)
 
     allocate(grad(ndim,natom))

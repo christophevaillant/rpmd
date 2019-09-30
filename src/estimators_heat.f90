@@ -5,25 +5,30 @@ module estimators
 
   implicit none
 
-  public:: init_estimators, estimator, finalize_estimators, transition, normalvec,&
-       transfreqs, hess, init_path
+  public:: init_estimators, estimator, finalize_estimators,transfreqs, init_path, whichestim,&
+       betanright, betanleft, width
 
   private
 
   logical, allocatable:: whichestim(:)
   double precision, allocatable:: transition(:,:), normalvec(:,:), transfreqs(:)
-  double precision, allocatable:: lambda(:,:), hess(:,:)
+  double precision, allocatable:: lambda(:,:)
+  double precision:: betanleft, betanright, width
 
 contains
-  
+
   subroutine init_estimators()
     implicit none
     integer:: i,j,k,kk, idof
+    !TODO: estimatormod- implement list of estimators
 
     if (outputfbar) open(200,file="fbar.dat")
 
     ntime= NMC/Noutput
     allocate(whichestim(nestim))
+
+    !----------------------------
+    !TODO: Not sure if we'll need this for the heat transport. If not, delete.
     ! allocate(lambda(ndof,n))
     ! do idof=1, ndof
     !    do k=1, n,2
@@ -52,74 +57,100 @@ contains
     !       end if
     !    end do
     ! end do
-    return
+    ! write(*,*) lambda
+    ! write(*,*) transfreqs
   end subroutine init_estimators
 
   subroutine finalize_estimators()
     implicit none
-    if (outputfbar) close(200)
     deallocate(whichestim)
-    ! deallocate(lambda)
   end subroutine finalize_estimators
 
   subroutine estimator(x,p,tcfval)
     implicit none
-    double precision, intent(in):: x(:,:,:), p(:,:,:)
+    double precision, intent(inout):: x(:,:,:), p(:,:,:)
     double precision, intent(out):: tcfval(:)
-    double precision,allocatable:: v(:,:)
-    double precision:: s
-    integer:: i,j
+    double precision,allocatable:: v(:,:), newp(:), grad(:,:,:)
+    double precision:: s, energy, prob, stdev
+    integer:: i,j,k
 
-    allocate(v(ndim,natom))
-    do i=1,ndim
-       do j=1,natom
-          v(i,j)= centroid(x(:,i,j)) - transition(i,j)
+    !TODO: multidimensional will need to work out which side of bath each particle is
+    !Keeping this bit of code for future reference, could use to work out box
+    ! allocate(v(ndim,natom))
+    ! do i=1,ndim
+    !    do j=1,natom
+    !       v(i,j)= centroid(x(:,i,j)) - transition(i,j)
+    !    end do
+    ! end do
+    ! s= dot_product(reshape(v,(/ndof/)), reshape(normalvec,(/ndof/)))
+    ! deallocate(v)
+
+    allocate(newp(1)) !TODO: multidimensional generalization to ndim
+    tcfval(1)=0.0d0
+    allocate(grad(N,1,natom))
+    call UMprime(x, grad)
+    do i=1, natom
+       energy=0.0d0
+       do j=1, N
+          ! prob= exp(-0.5d0*(x(j,1,i)-lattice(1,i+1))**2/width**2)/sqrt(2.0d0*pi*width**2)
+          energy= energy + p(j,1,i)*grad(j,1,i)/mass(i)
+          ! energy= energy + prob*0.5d0*p(j,1,i)**2/mass(i)
+          ! energy= energy + prob*0.5d0*p(j,1,i)**3/mass(i)**2
+          !check the atom is still in the box!
+          if (x(j,1,i) .lt. lattice(1,1)) then
+             ! write(*,*) "left bounce", x(j,1,i), lattice(1,1)
+             x(j,1,i)= lattice(1,1)
+             stdev= 1.0d0/sqrt(betanleft)
+             errcode_normal = vdrnggaussian(rmethod_normal,stream_normal,1,newp,0.0d0,stdev)
+             p(j,1,i)= abs(newp(1))*sqrt(mass(i))
+          else if (x(j,1,i) .gt. lattice(1,natom)) then
+             ! write(*,*) "right bounce", x(j,1,i), lattice(1,natom+2)
+             x(j,1,i)= lattice(1,Natom)
+             stdev= 1.0d0/sqrt(betanright)
+             errcode_normal = vdrnggaussian(rmethod_normal,stream_normal,1,newp,0.0d0,stdev)
+             !TODO: multidimensional generalization like for the directional langevin thermostat
+             p(j,1,i)= -abs(newp(1))*sqrt(mass(i))
+          end if
        end do
+       tcfval(1)= tcfval(1) + energy/dble(N)
     end do
-    s= dot_product(reshape(v,(/ndof/)), reshape(normalvec,(/ndof/)))
-    if (s .gt. 0) then
-       tcfval=1.0d0
-    else
-       tcfval=0.0d0
-    end if
-    ! write(*,*) centroid(x(:,1,1)), transition(1,1), s, tcfval
-    deallocate(v)
+    deallocate(newp,grad)
+
     return
   end subroutine estimator
 
   !-----------------------------------------------------
   !-----------------------------------------------------
   !function for initializing a path
-  subroutine init_path(x, p, factors, weight)
-    double precision, intent(out):: x(:,:,:), p(:,:,:),factors, weight
-    double precision, allocatable::   vel(:), tempp(:), pos(:), tempx(:)
-    double precision, allocatable::  rk(:,:), pk(:), rp(:)
-    double precision::                stdev, potvals, ringpot, potdiff, poscent, ringpols
-    integer::                         i,j,k, idof, imin(1), inn
+  subroutine init_path(x, p, factors)
+    double precision, intent(out):: x(:,:,:), p(:,:,:),factors
+    double precision, allocatable:: tempx(:),rk(:,:),rp(:), grad(:,:,:)
+    double precision::              stdev, potvals, ringpot, potdiff
+    double precision::              prob, stdevharm, energy
+    integer::                       i,j,k, idof, imin(1), inn
 
-    allocate(tempp(n), vel(n),pos(n), rp(n),tempx(n))
-    allocate(rk(n,ndof),pk(n))
-    x(:,:,:)=0.0d0
-    p(:,:,:)=0.0d0
+    allocate(rp(n),tempx(1))
+    allocate(rk(n,ndof))
     potvals=0.0d0
     stdev= 1.0d0/sqrt(betan)
+    x(:,:,:)= 0.0d0
+    p(:,:,:)= 0.0d0
+
     do idof=1, ndof
           !---------------------------
           !generate random numbers for chain
-          errcode_normal = vdrnggaussian(rmethod_normal,stream_normal,n,rp,0.0d0,1.0d0)!ringpolymer
+          errcode_normal = vdrnggaussian(rmethod_normal,stream_normal,n,rp,0.0d0,stdev)!ringpolymer
           !---------------------------
           !scale them to have the right standard deviation
-          ringpols= 0.0d0
           do k=1, n
              if (k.eq. 1) then
                 rp(k)= 0.0d0
              else
-                rp(k)= rp(k)/(sqrt(betan*mass(1))*lam(k))
+                rp(k)= rp(k)/lam(k)
              end if
-             ! potvals= potvals+0.5d0*mass(1)*(lam(k)*rp(k))**2
           end do
           !---------------------------
-          !transform to non-ring polymer normal mode coords
+          !transform to site-local cartesian
           if (ring) then
              if (use_fft) then
                 call ring_transform_backward_nr(rp, rk(:,idof))
@@ -129,68 +160,50 @@ contains
           else
              call linear_transform_backward(rp, rk(:,idof), idof)
           end if
-          !---------------------------
-          !produce random positions in DoFs orthogonal to unstable mode
-          if (idof .gt. 1) then
-             errcode_normal = vdrnggaussian(rmethod_normal,stream_normal,N,pos,0.0d0,stdev)
-             do k=1,n
-                rk(1,idof)= rk(1,idof) +pos(k)/sqrt(mass(1)*abs(transfreqs(idof)))
-                potvals= potvals+V0+0.5d0*mass(1)*transfreqs(idof)*pos(k)**2
-             end do
-          end if
-       end do
-
+    end do
     !---------------------------
-    !transform to cartesian coordinates
-    if (idof .gt.1) then
-       do k=1,n
-          x(k,:,:)= reshape(matmul(transpose(hess),rk(k,:)),(/ndim,natom/))
-       end do
-    else
-       do k=1,n
-          x(k,1,1)= rk(k,1)
-       end do
-    end if
+    !transform to global cartesian coordinates    
     do i=1,ndim
        do j=1,natom
-          errcode_normal = vdrnggaussian(rmethod_normal,stream_normal,n,pk(:),0.0d0,stdev)!momenta
-          pk(:)= pk(:)*sqrt(mass(j))
-          if (ring) then
-             if (use_fft) then
-                call ring_transform_backward_nr(pk, p(:,i,j))
-             else
-                call ring_transform_backward(pk, p(:,i,j))
-             end if
-          else
-             call linear_transform_backward(pk, p(:,i,j), idof)
-          end if
+          idof= calcidof(i,j)
+          stdevharm= 1.0d0/sqrt(harm*mass(j))
+          stdev= 1.0d0/sqrt(betan)
+          errcode_normal = vdrnggaussian(rmethod_normal,stream_normal,1,tempx,lattice(i,j),stdevharm)!sites
+          errcode_normal = vdrnggaussian(rmethod_normal,stream_normal,n,p(:,i,j),0.0d0,stdev)!momenta
+          x(:,i,j)= rk(:,idof) + tempx(1)
+          p(:,i,j)= p(:,i,j)*sqrt(mass(j))
        end do
     end do
-
-    do i=1, ndim
-       do j=1, natom
-          x(:,i,j)= x(:,i,j) + transition(i,j)- centroid(x(:,i,j))
+    potvals=0.0d0
+    do i=1,ndim
+       do j=1,natom-1
+          do k=1,n
+             potvals=potvals + 0.5d0*mass(j)*(interharm*(x(k,i,j)-x(k,i,j+1)))**2
+          end do
        end do
     end do
-    !calculate real potential for each bead
-    ringpot= 0.0d0!UM(x)!
+    ringpot= 0.0d0
+    allocate(grad(N,1,natom))
     do k=1,n
        ringpot= ringpot+ pot(x(k,:,:))
     end do
-    potdiff= (ringpot-potvals)
-    ! write(*,*) ringpot, potvals, potdiff,betan*potdiff,exp(betan*potdiff)
-    factors=centroid(p(:,1,1))/mass(1)
-    ! factors= factors/sqrt(2.0d0*pi*beta/mass(1))
-    weight=min(1.0d0,exp(-betan*ringpot))
-    ! if (weight .gt. 0.1) then
-    !    write(*,*) "Weight:", weight
-    !    write(*,*) "Centroids:", centroid(x(:,1,1)), centroid(p(:,1,1))
-    !    write(*,*) "x:",x(:,1,1)
-    !    write(*,*) "p:",p(:,1,1)
-    !    stop
-    ! end if
-    deallocate(vel, tempp,pos, tempx)
-
+    potdiff= (ringpot- potvals)/dble(natom)
+    ! write(*,*) ringpot, potvals, potdiff
+    factors=0.0d0
+    call UMprime(x, grad)
+    do i=1,natom
+       energy=0.0d0
+       do j=1,n
+          ! prob= exp(-0.5d0*(x(j,1,i)-lattice(1,i+1))**2/width**2)/sqrt(2.0d0*pi*width**2)
+          energy= energy + p(j,1,i)*grad(j,1,i)/mass(i)
+          ! energy= energy + prob*0.5d0*p(j,1,i)**2/mass(i)
+          ! energy= energy + prob*0.5d0*p(j,1,i)**3/mass(i)**2
+       end do
+       factors=factors+ energy/dble(n)
+    end do
+    factors=factors*min(exp(-betan*potdiff),1.0d0)
+    ! factors=1.0d0
+    deallocate(tempx, rp, rk,grad)
     return
   end subroutine init_path
 
