@@ -154,16 +154,7 @@ contains
     do i=1,ndim
        do j=1,natom
           errcode_normal = vdrnggaussian(rmethod_normal,stream_normal,n,pk(:),0.0d0,stdev)!momenta
-          pk(:)= pk(:)*sqrt(mass(j))
-          if (ring) then
-             if (use_fft) then
-                call ring_transform_backward_nr(pk, p(:,i,j))
-             else
-                call ring_transform_backward(pk, p(:,i,j))
-             end if
-          else
-             call linear_transform_backward(pk, p(:,i,j), idof)
-          end if
+          p(:,i,j)= pk(:)*sqrt(mass(j))
        end do
     end do
 
@@ -172,23 +163,16 @@ contains
           x(:,i,j)= x(:,i,j) + transition(i,j)- centroid(x(:,i,j))
        end do
     end do
+
     !calculate real potential for each bead
-    ringpot= 0.0d0!UM(x)!
+    ringpot= 0.0d0
     do k=1,n
        ringpot= ringpot+ pot(x(k,:,:))
     end do
+
     potdiff= (ringpot-potvals)
-    ! write(*,*) ringpot, potvals, potdiff,betan*potdiff,exp(betan*potdiff)
     factors=centroid(p(:,1,1))/mass(1)
-    ! factors= factors/sqrt(2.0d0*pi*beta/mass(1))
-    weight=min(1.0d0,exp(-betan*ringpot))
-    ! if (weight .gt. 0.1) then
-    !    write(*,*) "Weight:", weight
-    !    write(*,*) "Centroids:", centroid(x(:,1,1)), centroid(p(:,1,1))
-    !    write(*,*) "x:",x(:,1,1)
-    !    write(*,*) "p:",p(:,1,1)
-    !    stop
-    ! end if
+    weight=exp(-betan*potdiff)
     deallocate(vel, tempp,pos, tempx)
 
     return

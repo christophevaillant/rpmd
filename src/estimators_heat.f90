@@ -27,38 +27,6 @@ contains
     ntime= NMC/Noutput
     allocate(whichestim(nestim))
 
-    !----------------------------
-    !TODO: Not sure if we'll need this for the heat transport. If not, delete.
-    ! allocate(lambda(ndof,n))
-    ! do idof=1, ndof
-    !    do k=1, n,2
-    !       kk=(k-1)/2
-    !       if (idof .eq. 1) then !skip unstable mode
-    !          if (kk.eq.0) then
-    !             lambda(idof, k)= (2.0*omegan*sin(pi*kk/N))**2
-    !          else
-    !             lambda(idof, k-1)= (2.0*omegan*sin(pi*kk/N))**2
-    !             lambda(idof, k)= (2.0*omegan*sin(pi*kk/N))**2
-    !          end if
-    !       else
-    !          lambda(idof, k)= ((4.0*omegan**2 + 2.0*transfreqs(idof)) &
-    !               - 4.0*omegan**2*cos(2.0*pi*kk/n))
-    !          if (k.gt.1) &
-    !               lambda(idof, k-1)= ((4.0*omegan**2 + 2.0*transfreqs(idof)) &
-    !               - 4.0*omegan**2*cos(2.0*pi*kk/n))
-    !       end if
-    !       if (mod(n,2).eq.0) then
-    !          ! kk=n/2
-    !          ! if (idof .eq. 1 .and. ndof .eq. 1) then
-    !          ! lambda(idof, n)= (2.0*omegan*sin(pi*kk/N))**2
-    !          ! else
-    !          lambda(idof, n)= ((4.0*omegan**2 + 2.0*transfreqs(idof)/mass(1)) &
-    !               - 4.0*omegan**2*cos(2.0*pi*kk/n))
-    !       end if
-    !    end do
-    ! end do
-    ! write(*,*) lambda
-    ! write(*,*) transfreqs
   end subroutine init_estimators
 
   subroutine finalize_estimators()
@@ -74,43 +42,14 @@ contains
     double precision:: s, energy, prob, stdev
     integer:: i,j,k
 
-    !TODO: multidimensional will need to work out which side of bath each particle is
-    !Keeping this bit of code for future reference, could use to work out box
-    ! allocate(v(ndim,natom))
-    ! do i=1,ndim
-    !    do j=1,natom
-    !       v(i,j)= centroid(x(:,i,j)) - transition(i,j)
-    !    end do
-    ! end do
-    ! s= dot_product(reshape(v,(/ndof/)), reshape(normalvec,(/ndof/)))
-    ! deallocate(v)
-
-    allocate(newp(1)) !TODO: multidimensional generalization to ndim
+    allocate(newp(1))
     tcfval(1)=0.0d0
     allocate(grad(N,1,natom))
     call UMprime(x, grad)
     do i=1, natom
        energy=0.0d0
        do j=1, N
-          ! prob= exp(-0.5d0*(x(j,1,i)-lattice(1,i+1))**2/width**2)/sqrt(2.0d0*pi*width**2)
-          energy= energy + p(j,1,i)*grad(j,1,i)/mass(i)
-          ! energy= energy + prob*0.5d0*p(j,1,i)**2/mass(i)
-          ! energy= energy + prob*0.5d0*p(j,1,i)**3/mass(i)**2
-          !check the atom is still in the box!
-          if (x(j,1,i) .lt. lattice(1,1)) then
-             ! write(*,*) "left bounce", x(j,1,i), lattice(1,1)
-             x(j,1,i)= lattice(1,1)
-             stdev= 1.0d0/sqrt(betanleft)
-             errcode_normal = vdrnggaussian(rmethod_normal,stream_normal,1,newp,0.0d0,stdev)
-             p(j,1,i)= abs(newp(1))*sqrt(mass(i))
-          else if (x(j,1,i) .gt. lattice(1,natom)) then
-             ! write(*,*) "right bounce", x(j,1,i), lattice(1,natom+2)
-             x(j,1,i)= lattice(1,Natom)
-             stdev= 1.0d0/sqrt(betanright)
-             errcode_normal = vdrnggaussian(rmethod_normal,stream_normal,1,newp,0.0d0,stdev)
-             !TODO: multidimensional generalization like for the directional langevin thermostat
-             p(j,1,i)= -abs(newp(1))*sqrt(mass(i))
-          end if
+
        end do
        tcfval(1)= tcfval(1) + energy/dble(N)
     end do
@@ -194,15 +133,11 @@ contains
     do i=1,natom
        energy=0.0d0
        do j=1,n
-          ! prob= exp(-0.5d0*(x(j,1,i)-lattice(1,i+1))**2/width**2)/sqrt(2.0d0*pi*width**2)
-          energy= energy + p(j,1,i)*grad(j,1,i)/mass(i)
-          ! energy= energy + prob*0.5d0*p(j,1,i)**2/mass(i)
-          ! energy= energy + prob*0.5d0*p(j,1,i)**3/mass(i)**2
+
        end do
        factors=factors+ energy/dble(n)
     end do
-    factors=factors*min(exp(-betan*potdiff),1.0d0)
-    ! factors=1.0d0
+    factors=factors*exp(-betan*potdiff)
     deallocate(tempx, rp, rk,grad)
     return
   end subroutine init_path
