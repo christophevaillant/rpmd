@@ -714,26 +714,27 @@ end subroutine centreofmass
     return
   end function eucliddist
 
-subroutine findhess(x,hess)
-  double precision, allocatable::  hesstemp(:,:,:,:)
-  double precision, intent(in)::  x(:,:)
-  double precision, intent(out)::  hess(:,:)
-  integer::  i1,j1,i2,j2,idof1,idof2
-  allocate(hesstemp(ndim, natom, ndim, natom))
-  call massweightedhess(x, hesstemp)
-  do i1=1, natom
-     do j1=1, ndim
-        do i2= 1, natom
-           do j2= 1,ndim
-              idof1= (j1-1)*ndim + i1
-              idof2= (j2-1)*ndim + i2
-              hess(idof1,idof2)= hesstemp(j1,i1,j2,i2)
-           end do
-        end do
-     end do
-  end do
-deallocate(hesstemp)
-end subroutine findhess
+  subroutine findhess(x,hess)
+    double precision, allocatable::  hesstemp(:,:,:,:)
+    double precision, intent(in)::  x(:,:)
+    double precision, intent(out)::  hess(:,:)
+    integer::  i1,j1,i2,j2,idof1,idof2
+    allocate(hesstemp(ndim, natom, ndim, natom))
+    hess(:,:)=0.0d0
+    call massweightedhess(x, hesstemp)
+    do i1=1, natom
+       do j1=1, ndim
+          do i2= 1, natom
+             do j2= 1,ndim
+                idof1= (j1-1)*ndim + i1
+                idof2= (j2-1)*ndim + i2
+                hess(idof1,idof2)= hesstemp(j1,i1,j2,i2)
+             end do
+          end do
+       end do
+    end do
+    deallocate(hesstemp)
+  end subroutine findhess
 
 subroutine findnormal(x, hess, freqs,normal)
   implicit none
@@ -744,6 +745,9 @@ subroutine findnormal(x, hess, freqs,normal)
   integer,allocatable::            iwork(:)
   double precision, allocatable::  work(:), z(:,:)
 
+  freqs(:)=0.0d0
+  normal(:,:)=0.0d0
+  
   lwork=1+ 6*ndof + 2*ndof**2
   liwork= 3 + 5*ndof
   info=0

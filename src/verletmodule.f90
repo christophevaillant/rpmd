@@ -8,14 +8,14 @@ module verletint
 
   !TODO: sort out public and private
 
-  public::   propagator, thermostat, dt, imin, iproc, tau, gamma, iprint,&
+  public::   propagator, thermostat, imin, iproc, tau, gamma, iprint,&
        init_nm
 
   private
 
   integer::                         imin, iproc, thermostat
   integer, allocatable::            ipar(:)
-  double precision::                dt, dHdrlimit
+  double precision::                dHdrlimit
   double precision, allocatable::   c1(:,:), c2(:,:)
   double precision::                tau, gamma
   logical::                         iprint

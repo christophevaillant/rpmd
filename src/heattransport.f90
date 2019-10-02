@@ -4,6 +4,7 @@ program rpmd
   use estimators
   use instantonmod
   use general
+  use estimators
   use MKL_VSL_TYPE
   use MKL_VSL
 
@@ -14,7 +15,7 @@ program rpmd
   integer::                        idof,ii
   integer::                        time1, time2,irate, imax
   double precision::               answer,sigmaA, weight, massin
-  double precision::               tcf0, totalweight,s, ringpot
+  double precision::               tcf0, totalweight,s, ringpot, norm
   double precision, allocatable::  x(:,:,:), p(:,:,:), totaltcf(:,:)
   double precision, allocatable::  v(:,:),p0(:,:,:),q0(:,:,:)
   !lapack variables
@@ -91,7 +92,22 @@ program rpmd
      end do
   end if
   close(15)
+  !-------------------------
+  !-------------------------
+  !Read in the transition state and work out normal
+  allocate(transition(ndim, natom), normalvec(ndim,natom))
+  open(20, file="transition.dat")
+  do i=1, natom
+     read(20, *) (transition(j,i), j=1, ndim)
+  end do
+  close(20)
+  if (xunit .eq. 2) transition(:,:)= transition(:,:)/0.529177d0
 
+  allocate(hess(ndof,ndof), transfreqs(ndof))
+  call findhess(transition, hess)
+  call findnormal(transition, hess, transfreqs,normalvec)
+  V0= pot(transition)
+  write(*,*) "Energy zero=", V0
   !-------------------------
   !-------------------------
   !Start converging TCFs
@@ -109,19 +125,23 @@ program rpmd
   !Main loop
   do ii=1, nrep
      tcf(:,:)=0.0d0
-     call init_path(x,p, tcf0)
-     if (iprint) write(*,*) ii, x(1,1,1), p(1,1,1),tcf0
+     call init_path(x,p, tcf0, weight)
+     totalweight=totalweight + weight
+     if (iprint) write(*,*) ii, centroid(x(:,1,1)), centroid(p(:,1,1)),tcf0, weight, totalweight/dble(ii), totaltcf(1,1)/dble(ii)
      call propagator(x,p,tcf)
      do i=1, nestim
         do j=1,ntime
-           totaltcf(i,j)= totaltcf(i,j) + tcf(i,j)*tcf0
+           totaltcf(i,j)= totaltcf(i,j) + tcf(i,j)*tcf0*weight
         end do
      end do
   end do
 
   !------------------------------------
   !Finalize and write out
-  totaltcf(:,:)= totaltcf(:,:)/dble(nrep)
+  norm= normalization()
+  write(*,*) "Average factor:", totaltcf(1,1)/dble(nrep)
+  write(*,*) "Normalization, totalweight:", norm, totalweight/dble(nrep)
+  totaltcf(:,:)= totaltcf(:,:)/(dble(nrep)) !/totalweight
   if (outputtcf) then
      open(100, file="timecorrelation.dat")
      do i=1, ntime
@@ -133,7 +153,9 @@ program rpmd
   call finalize_estimators()
   call system_clock(time2, irate, imax)
   write(*,*) "Time taken (s)=",dble(time2-time1)/dble(irate)
+
   deallocate(mass)
   deallocate(x,p, totaltcf, tcf)
+  deallocate(hess, normalvec)
 
 end program rpmd

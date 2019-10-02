@@ -6,13 +6,13 @@ module estimators
   implicit none
 
   public:: init_estimators, estimator, finalize_estimators,transfreqs, init_path, whichestim,&
-       betanright, betanleft, width
+       betanright, betanleft, width, transition, normalvec, hess, normalization
 
   private
 
   logical, allocatable:: whichestim(:)
   double precision, allocatable:: transition(:,:), normalvec(:,:), transfreqs(:)
-  double precision, allocatable:: lambda(:,:)
+  double precision, allocatable:: lambda(:,:), hess(:,:)
   double precision:: betanleft, betanright, width
 
 contains
@@ -39,21 +39,38 @@ contains
     double precision, intent(inout):: x(:,:,:), p(:,:,:)
     double precision, intent(out):: tcfval(:)
     double precision,allocatable:: v(:,:), newp(:), grad(:,:,:)
-    double precision:: s, energy, prob, stdev
-    integer:: i,j,k
+    double precision:: s, energy, prob, stdev, a1,a2
+    integer:: i,j,k, idof
 
-    allocate(newp(1))
     tcfval(1)=0.0d0
-    allocate(grad(N,1,natom))
-    call UMprime(x, grad)
     do i=1, natom
        energy=0.0d0
-       do j=1, N
-
+       do j=1,n
+          if (j .eq. n) then
+             energy= energy + (beadforce(x,i,j)*(p(j,1,i) + p(1,1,i)))/mass(i)
+          else
+             energy= energy + (beadforce(x,i,j)*(p(j,1,i) + p(j+1,1,i)))/mass(i)
+          end if
+          if (i .lt. natom) energy= energy + (interforce(x,i,j)*(p(j,1,i) + p(j,1,i+1)))/mass(i)
        end do
-       tcfval(1)= tcfval(1) + energy/dble(N)
+       tcfval(1)= tcfval(1) + 0.5d0*energy/dble(N)
     end do
-    deallocate(newp,grad)
+
+    !langevin thermostat step
+    allocate(newp(ndof))
+    a1=exp(-gammaheat*dt)!
+    a2= sqrt(1.0d0- a1**2)
+    errcode_normal = vdrnggaussian(rmethod_normal,stream_normal,ndof,newp,0.0d0,1.0d0)
+    do i=1, ndim
+       do j=1, natom
+          idof= calcidof(i,j)
+          do k=1,n
+             p(k,i,j)= (a1**2)*p(k,i,j) + &
+                  sqrt(mass(j)/beta)*a2*sqrt(1.0+a1**2)*newp(idof)
+          end do
+       end do
+    end do
+    deallocate(newp)
 
     return
   end subroutine estimator
@@ -61,9 +78,9 @@ contains
   !-----------------------------------------------------
   !-----------------------------------------------------
   !function for initializing a path
-  subroutine init_path(x, p, factors)
-    double precision, intent(out):: x(:,:,:), p(:,:,:),factors
-    double precision, allocatable:: tempx(:),rk(:,:),rp(:), grad(:,:,:)
+  subroutine init_path(x, p, factors,weight)
+    double precision, intent(out):: x(:,:,:), p(:,:,:),factors,weight
+    double precision, allocatable:: tempx(:),rk(:,:),rp(:), grad(:,:,:), centroidx(:,:)
     double precision::              stdev, potvals, ringpot, potdiff
     double precision::              prob, stdevharm, energy
     integer::                       i,j,k, idof, imin(1), inn
@@ -102,44 +119,81 @@ contains
     end do
     !---------------------------
     !transform to global cartesian coordinates    
+    potvals=0.0d0
     do i=1,ndim
        do j=1,natom
           idof= calcidof(i,j)
-          stdevharm= 1.0d0/sqrt(harm*mass(j))
+          stdevharm= 1.0d0/sqrt(beta*transfreqs(idof)*mass(j))
           stdev= 1.0d0/sqrt(betan)
           errcode_normal = vdrnggaussian(rmethod_normal,stream_normal,1,tempx,lattice(i,j),stdevharm)!sites
           errcode_normal = vdrnggaussian(rmethod_normal,stream_normal,n,p(:,i,j),0.0d0,stdev)!momenta
           x(:,i,j)= rk(:,idof) + tempx(1)
+          do k=1, n
+             potvals=potvals + 0.5d0*mass(j)*transfreqs(idof)*(x(k,i,j)-lattice(i,j))**2 
+          end do
           p(:,i,j)= p(:,i,j)*sqrt(mass(j))
        end do
     end do
-    potvals=0.0d0
+
+    allocate(centroidx(ndim,natom))
     do i=1,ndim
-       do j=1,natom-1
-          do k=1,n
-             potvals=potvals + 0.5d0*mass(j)*(interharm*(x(k,i,j)-x(k,i,j+1)))**2
-          end do
+       do j=1,natom
+          centroidx(i,j)= centroid(x(:,i,j))
        end do
     end do
     ringpot= 0.0d0
-    allocate(grad(N,1,natom))
     do k=1,n
        ringpot= ringpot+ pot(x(k,:,:))
     end do
-    potdiff= (ringpot- potvals)/dble(natom)
-    ! write(*,*) ringpot, potvals, potdiff
+    potdiff= (ringpot- potvals)
+    weight= min(exp(-betan*potdiff), 1.0d0) !exp(-betan*potdiff) !
+
+    !work out initial current
     factors=0.0d0
-    call UMprime(x, grad)
     do i=1,natom
        energy=0.0d0
        do j=1,n
-
+          if (j .eq. n) then
+             energy= energy + (beadforce(x,i,j)*(p(j,1,i) + p(1,1,i)))/mass(i)
+          else
+             energy= energy + (beadforce(x,i,j)*(p(j,1,i) + p(j+1,1,i)))/mass(i)
+          end if
+          if (i .lt. natom) energy= energy + (interforce(x,i,j)*(p(j,1,i) + p(j,1,i+1)))/mass(i)
        end do
-       factors=factors+ energy/dble(n)
+       factors=factors+ 0.5d0*energy/dble(n)
     end do
-    factors=factors*exp(-betan*potdiff)
-    deallocate(tempx, rp, rk,grad)
+
+    ! write(*,*) ringpot, potvals, potdiff, weight, factors
+
+    deallocate(tempx, rp, rk)
     return
   end subroutine init_path
+
+  function normalization()
+    implicit none
+    double precision:: normalization
+    integer:: i
+    
+    normalization=1.0d0 !exp(-beta*V0)
+    do i=1, ndof
+       normalization=normalization*harmonicpart(transfreqs(i)*beta**2)
+    end do
+
+    return
+  end function normalization
+
+  function harmonicpart(omegasq)
+    implicit none
+    double precision:: harmonicpart
+    double precision, intent(in):: omegasq
+    integer:: i
+
+    harmonicpart= 1.0d0
+    do i=1,n
+       harmonicpart= harmonicpart/sqrt(4.0d0*sin(dble(i)*pi/dble(n))**2 + omegasq/(n**2))
+    end do
+
+    return
+  end function harmonicpart
 
 end module estimators

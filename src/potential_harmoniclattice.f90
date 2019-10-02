@@ -1,7 +1,7 @@
 module potential
   use general
   implicit none
-  double precision::               harm, interharm
+  double precision::               harm, interharm, V0, gammaheat
   double precision, allocatable::  lattice(:,:)
 
   public
@@ -10,11 +10,12 @@ contains
   subroutine V_init()
     double precision:: spacing
     integer:: i
-    namelist /POTDATA/ spacing, harm, interharm
+    namelist /POTDATA/ spacing, harm, interharm, gammaheat
 
     spacing=1.0d0
     harm=1.0d-2
     interharm=1.0d-2
+    gammaheat=1.0d0
 
     read(5, nml=POTDATA)
 
@@ -23,7 +24,7 @@ contains
        lattice(1,i)= i*spacing
        write(*,*)i, lattice(1,i)
     end do
-
+    V0=0.0d0
     return
   end subroutine V_init
   !---------------------------------------------------------------------
@@ -41,7 +42,7 @@ contains
     do i=1, natom-1
        pot= pot + 0.5d0*mass(i)*interharm**2*(x(1,i+1)-x(1,i))**2
     end do
-
+    pot=pot-V0
     return
   end function POT
 
@@ -49,8 +50,10 @@ contains
   subroutine Vprime(x, grad)
     implicit none
     integer::              i,j
-    double precision::     grad(:,:), x(:,:)
+    double precision, intent(in)::   x(:,:)
+    double precision, intent(out)::  grad(:,:)
 
+    grad(:,:)=0.0d0
     do i=1, natom
        grad(1,i)= mass(i)*harm**2*(x(1,i)-lattice(1,i))
        if (i.eq.1) then
@@ -68,13 +71,19 @@ contains
   !---------------------------------------------------------------------
   subroutine  Vdoubleprime(x,hess)
     implicit none
-    double precision::     hess(:,:,:,:), x(:,:), dummy1, eps
+    double precision, intent(out)::   hess(:,:,:,:)
+    double precision, intent(in)::  x(:,:)
     integer::              i, j
 
+    hess(:,:,:,:)=0.0d0
     do i=1, natom
        do j=1, natom
           if (i.eq.j) then
-             hess(1,i,1,j)= mass(i)*harm**2 + 2.0d0*mass(i)*interharm**2
+             if (i.eq.1 .or. i.eq.natom) then
+                hess(1,i,1,j)= mass(i)*harm**2 + mass(i)*interharm**2
+             else
+                hess(1,i,1,j)= mass(i)*harm**2 + 2.0d0*mass(i)*interharm**2
+             end if
           else if (i .eq. j+1 .or. i .eq. j-1) then
              hess(1,i,1,j)= -mass(i)*interharm**2
           end if
@@ -83,6 +92,39 @@ contains
 
     return
   end subroutine Vdoubleprime
+
+  !---------------------------------------------------------------------
+  !inter-bead force, nearest neighbours, pbc
+  function beadforce(x,i,j)
+    implicit none
+    double precision, intent(in):: x(:,:,:)
+    integer, intent(in):: i,j
+    double precision:: beadforce
+
+    if (j .eq. n) then
+       beadforce= mass(i)*interharm**2*(x(j,1,i) - x(1, 1, i))
+    else
+       beadforce= mass(i)*interharm**2*(x(j,1,i) - x(j+1, 1, i))
+    end if
+
+    return
+  end function beadforce
+
+  !---------------------------------------------------------------------
+  !interatomic force, no pbc
+  function interforce(x,i,j)
+    implicit none
+    double precision, intent(in):: x(:,:,:)
+    integer, intent(in):: i,j
+    double precision:: interforce
+
+    if (j .lt. n) then
+       interforce= mass(i)*interharm**2*(x(j,1,i) - x(j, 1, i+1))
+    end if
+    
+    return
+  end function interforce
+
 
   !---------------------------------------------------------------------
   subroutine  massweightedhess(x,hess)

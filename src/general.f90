@@ -20,7 +20,7 @@
     double precision,allocatable::    beadmass(:,:), lam(:), wsave(:)
     logical::                         ring, use_fft
     double precision, parameter::    pi=3.14159265358979d0
-    double precision::               beta, betan, UMtilde, omegan
+    double precision::               beta, betan, UMtilde, omegan, dt
     double precision, allocatable::  well1(:,:), well2(:,:), mass(:)
     character, allocatable::         label(:)
     logical::                        fixedends, outputtcf, outputfbar
