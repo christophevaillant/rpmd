@@ -141,7 +141,8 @@ program rpmd
   norm= normalization()
   write(*,*) "Average factor:", totaltcf(1,1)/dble(nrep)
   write(*,*) "Normalization, totalweight:", norm, totalweight/dble(nrep)
-  totaltcf(:,:)= totaltcf(:,:)/(dble(nrep)) !/totalweight
+  totaltcf(:,:)= totaltcf(:,:)/totalweight
+  ! totaltcf(:,:)= totalweight*totaltcf(:,:)/dble(nrep)**2
   if (outputtcf) then
      open(100, file="timecorrelation.dat")
      do i=1, ntime

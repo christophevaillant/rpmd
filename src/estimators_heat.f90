@@ -146,7 +146,7 @@ contains
        ringpot= ringpot+ pot(x(k,:,:))
     end do
     potdiff= (ringpot- potvals)
-    weight= min(exp(-betan*potdiff), 1.0d0) !exp(-betan*potdiff) !
+    weight= exp(-betan*potdiff) !min(exp(-betan*potdiff), 1.0d0) !
 
     !work out initial current
     factors=0.0d0
