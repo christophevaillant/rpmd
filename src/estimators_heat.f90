@@ -47,9 +47,9 @@ contains
        energy=0.0d0
        do j=1,n
           if (j .eq. n) then
-             energy= energy + (beadforce(x,i,j)*(p(j,1,i) + p(1,1,i)))/mass(i)
+             energy= energy - (beadforce(x,i,j)*(p(j,1,i) + p(1,1,i)))/mass(i)
           else
-             energy= energy + (beadforce(x,i,j)*(p(j,1,i) + p(j+1,1,i)))/mass(i)
+             energy= energy - (beadforce(x,i,j)*(p(j,1,i) + p(j+1,1,i)))/mass(i)
           end if
           if (i .lt. natom) energy= energy + (interforce(x,i,j)*(p(j,1,i) + p(j,1,i+1)))/mass(i)
        end do
@@ -154,9 +154,9 @@ contains
        energy=0.0d0
        do j=1,n
           if (j .eq. n) then
-             energy= energy + (beadforce(x,i,j)*(p(j,1,i) + p(1,1,i)))/mass(i)
+             energy= energy - (beadforce(x,i,j)*(p(j,1,i) + p(1,1,i)))/mass(i)
           else
-             energy= energy + (beadforce(x,i,j)*(p(j,1,i) + p(j+1,1,i)))/mass(i)
+             energy= energy - (beadforce(x,i,j)*(p(j,1,i) + p(j+1,1,i)))/mass(i)
           end if
           if (i .lt. natom) energy= energy + (interforce(x,i,j)*(p(j,1,i) + p(j,1,i+1)))/mass(i)
        end do
