@@ -99,13 +99,16 @@ contains
     implicit none
     double precision, intent(in):: x(:,:,:)
     integer, intent(in):: i,j
-    double precision:: beadforce
+    double precision:: beadforce, q1, q2
 
+    q1= x(j,1,i) - lattice(1,i)
     if (j .eq. n) then
-       beadforce= mass(i)*interharm**2*(x(j,1,i) - x(1, 1, i))
+       q2= x(1,1,i) - lattice(1,i)
     else
-       beadforce= mass(i)*interharm**2*(x(j,1,i) - x(j+1, 1, i))
+       q2= x(j+1,1,i) - lattice(1,i)
     end if
+    
+    beadforce= mass(i)*interharm**2*(q1-q2)
 
     return
   end function beadforce
@@ -116,10 +119,14 @@ contains
     implicit none
     double precision, intent(in):: x(:,:,:)
     integer, intent(in):: i,j
-    double precision:: interforce
+    double precision:: interforce, q1, q2
 
+    q1= x(j,1,i) - lattice(1,i)
     if (j .lt. n) then
+       q2= x(1,1,i) - lattice(1,i+1)
        interforce= mass(i)*interharm**2*(x(j,1,i) - x(j, 1, i+1))
+    else
+       interforce=0.0d0
     end if
     
     return

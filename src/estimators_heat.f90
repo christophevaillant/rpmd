@@ -6,14 +6,14 @@ module estimators
   implicit none
 
   public:: init_estimators, estimator, finalize_estimators,transfreqs, init_path, whichestim,&
-       betanright, betanleft, width, transition, normalvec, hess, normalization
+       betaright, betaleft, width, transition, normalvec, hess, normalization
 
   private
 
   logical, allocatable:: whichestim(:)
   double precision, allocatable:: transition(:,:), normalvec(:,:), transfreqs(:)
   double precision, allocatable:: lambda(:,:), hess(:,:)
-  double precision:: betanleft, betanright, width
+  double precision:: betaleft, betaright, width
 
 contains
 
@@ -62,7 +62,7 @@ contains
     a2= sqrt(1.0d0- a1**2)
     errcode_normal = vdrnggaussian(rmethod_normal,stream_normal,ndof,newp,0.0d0,1.0d0)
     do i=1, ndim
-       do j=1, natom
+       do j=2, natom-1
           idof= calcidof(i,j)
           do k=1,n
              p(k,i,j)= (a1**2)*p(k,i,j) + &
@@ -70,6 +70,24 @@ contains
           end do
        end do
     end do
+
+    do i=1, ndim
+       j=1
+       idof= calcidof(i,j)
+       do k=1,n
+          p(k,i,j)= (a1**2)*p(k,i,j) + &
+               sqrt(mass(j)/betaleft)*a2*sqrt(1.0+a1**2)*newp(idof)
+       end do
+       j=natom
+       idof= calcidof(i,j)
+       do k=1,n
+          p(k,i,j)= (a1**2)*p(k,i,j) + &
+               sqrt(mass(j)/betaright)*a2*sqrt(1.0+a1**2)*newp(idof)
+       end do
+    end do
+
+
+    tcfval(2)= tcfval(1)
     deallocate(newp)
 
     return
@@ -79,7 +97,7 @@ contains
   !-----------------------------------------------------
   !function for initializing a path
   subroutine init_path(x, p, factors,weight)
-    double precision, intent(out):: x(:,:,:), p(:,:,:),factors,weight
+    double precision, intent(out):: x(:,:,:), p(:,:,:),weight,factors(:)
     double precision, allocatable:: tempx(:),rk(:,:),rp(:), grad(:,:,:), centroidx(:,:)
     double precision::              stdev, potvals, ringpot, potdiff
     double precision::              prob, stdevharm, energy
@@ -149,7 +167,7 @@ contains
     weight= exp(-betan*potdiff) !min(exp(-betan*potdiff), 1.0d0) !
 
     !work out initial current
-    factors=0.0d0
+    factors(:)=0.0d0
     do i=1,natom
        energy=0.0d0
        do j=1,n
@@ -160,9 +178,9 @@ contains
           end if
           if (i .lt. natom) energy= energy + (interforce(x,i,j)*(p(j,1,i) + p(j,1,i+1)))/mass(i)
        end do
-       factors=factors+ 0.5d0*energy/dble(n)
+       factors(1)=factors(1)+ 0.5d0*energy/dble(n)
     end do
-
+    factors(2)=1.0d0
     ! write(*,*) ringpot, potvals, potdiff, weight, factors
 
     deallocate(tempx, rp, rk)

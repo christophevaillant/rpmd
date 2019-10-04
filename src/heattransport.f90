@@ -15,19 +15,19 @@ program rpmd
   integer::                        idof,ii
   integer::                        time1, time2,irate, imax
   double precision::               answer,sigmaA, weight, massin
-  double precision::               tcf0, totalweight,s, ringpot, norm
+  double precision::               totalweight,s, ringpot, norm, T, Tleft, Tright
   double precision, allocatable::  x(:,:,:), p(:,:,:), totaltcf(:,:)
-  double precision, allocatable::  v(:,:),p0(:,:,:),q0(:,:,:)
+  double precision, allocatable::  v(:,:),p0(:,:,:),q0(:,:,:),tcf0(:)
   !lapack variables
   character::                      jobz, range, uplo
-  double precision::               vl, vu, abstol, deltabeta
+  double precision::               vl, vu, abstol, deltaT
   integer::                        nout, ldz, lwork, liwork, info
   integer,allocatable::            isuppz(:), iwork(:)
   double precision, allocatable::  work(:), z(:,:)
   logical::                        latticemass
   namelist /MCDATA/ n, beta, NMC, noutput,dt, iprint,imin,tau,&
        nrep, use_fft, thermostat, ndim, natom, xunit,gamma, &
-       outputtcf, latticemass, deltabeta, width
+       outputtcf, latticemass, deltaT, width
 
   !-------------------------
   !Set default system parameters then read in namelist
@@ -46,11 +46,11 @@ program rpmd
   imin=0
   tau=1.0d0
   gamma=1.0d0
-  nestim=1
+  nestim=2
   ring=.true.
   fixedends=.false.
   latticemass=.false.
-  deltabeta=1.0d0
+  deltaT=1.0d0
   outputtcf=.true.
   width=1.0d-1
 
@@ -74,8 +74,12 @@ program rpmd
   ndof= ndim*natom
   totdof= ndof*n
 
-  betanleft=(beta-deltabeta)/dble(n)
-  betanright=(beta+deltabeta)/dble(n)
+  T= 1.0d0/(3.167d-6*beta)
+  Tleft= T- 0.5d0*deltaT
+  Tright= T+ 0.5d0*deltaT
+
+  betaleft=1.0d0/(3.167d-6*Tleft)
+  betaright=1.0d0/(3.167d-6*Tright)
 
   Noutput=1 !force noutput to enforce baths at every step
 
@@ -117,7 +121,7 @@ program rpmd
   call init_estimators() !allocates estimator stuff
 
   allocate(x(n,ndim,natom),p(n,ndim,natom))
-  allocate(totaltcf(nestim,ntime), tcf(nestim,ntime))
+  allocate(totaltcf(nestim,ntime), tcf(nestim,ntime), tcf0(nestim))
   totaltcf(:,:)=0.0d0
   totalweight=0.0d0
 
@@ -127,11 +131,11 @@ program rpmd
      tcf(:,:)=0.0d0
      call init_path(x,p, tcf0, weight)
      totalweight=totalweight + weight
-     if (iprint) write(*,*) ii, centroid(x(:,1,1)), centroid(p(:,1,1)),tcf0, weight, totalweight/dble(ii), totaltcf(1,1)/dble(ii)
+     if (iprint) write(*,*) ii, centroid(x(:,1,1)), centroid(p(:,1,1)),tcf0(1), weight, totalweight/dble(ii), totaltcf(1,1)/dble(ii)
      call propagator(x,p,tcf)
      do i=1, nestim
         do j=1,ntime
-           totaltcf(i,j)= totaltcf(i,j) + tcf(i,j)*tcf0*weight
+           totaltcf(i,j)= totaltcf(i,j) + tcf(i,j)*tcf0(i)*weight
         end do
      end do
   end do
