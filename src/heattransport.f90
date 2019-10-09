@@ -14,7 +14,7 @@ program rpmd
   integer::                        i1,i2,j1,j2,idof1,idof2
   integer::                        idof,ii
   integer::                        time1, time2,irate, imax
-  double precision::               answer,sigmaA, weight, massin
+  double precision::               answer,sigmaA, weight, massin, averagex
   double precision::               totalweight,s, ringpot, norm, T, Tleft, Tright
   double precision, allocatable::  x(:,:,:), p(:,:,:), totaltcf(:,:)
   double precision, allocatable::  v(:,:),p0(:,:,:),q0(:,:,:),tcf0(:)
@@ -124,14 +124,15 @@ program rpmd
   allocate(totaltcf(nestim,ntime), tcf(nestim,ntime), tcf0(nestim))
   totaltcf(:,:)=0.0d0
   totalweight=0.0d0
-
+  averagex=0.0d0
   !--------------------
   !Main loop
   do ii=1, nrep
      tcf(:,:)=0.0d0
      call init_path(x,p, tcf0, weight)
      totalweight=totalweight + weight
-     if (iprint) write(*,*) ii, centroid(x(:,1,1)), centroid(p(:,1,1)),tcf0(1), weight, totalweight/dble(ii), totaltcf(1,1)/dble(ii)
+     averagex= averagex+ weight*tcf0(1)**2
+     if (iprint) write(*,*) ii,tcf0(1), weight, totalweight/dble(ii), averagex/dble(ii)
      call propagator(x,p,tcf)
      do i=1, nestim
         do j=1,ntime
@@ -143,7 +144,7 @@ program rpmd
   !------------------------------------
   !Finalize and write out
   norm= normalization()
-  write(*,*) "Average factor:", totaltcf(1,1)/dble(nrep)
+  write(*,*) "Average factor:", averagex/dble(nrep)
   write(*,*) "Normalization, totalweight:", norm, totalweight/dble(nrep)
   totaltcf(:,:)= totaltcf(:,:)/totalweight
   ! totaltcf(:,:)= totalweight*totaltcf(:,:)/dble(nrep)**2

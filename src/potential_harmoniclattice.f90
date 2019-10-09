@@ -1,14 +1,13 @@
 module potential
   use general
   implicit none
-  double precision::               harm, interharm, V0, gammaheat
+  double precision::               harm, interharm, V0, gammaheat,spacing
   double precision, allocatable::  lattice(:,:)
 
   public
 
 contains
   subroutine V_init()
-    double precision:: spacing
     integer:: i
     namelist /POTDATA/ spacing, harm, interharm, gammaheat
 
@@ -30,7 +29,7 @@ contains
   !---------------------------------------------------------------------
   function pot(x)
     implicit none
-    double precision::     pot, x(:,:)
+    double precision::     pot, x(:,:), q1, q2
     integer::              i,j
 
     pot=0.0d0
@@ -40,7 +39,9 @@ contains
     end do
     !interatomic potential
     do i=1, natom-1
-       pot= pot + 0.5d0*mass(i)*interharm**2*(x(1,i+1)-x(1,i))**2
+       q1=x(1,i) - lattice(1,i)
+       q2=x(1,i+1) - lattice(1,i+1)
+       pot= pot + 0.5d0*mass(i)*interharm**2*(q1-q2)**2
     end do
     pot=pot-V0
     return
@@ -52,16 +53,22 @@ contains
     integer::              i,j
     double precision, intent(in)::   x(:,:)
     double precision, intent(out)::  grad(:,:)
+    double precision:: q1, q2, q3
 
     grad(:,:)=0.0d0
     do i=1, natom
-       grad(1,i)= mass(i)*harm**2*(x(1,i)-lattice(1,i))
+       q1=x(1,i) - lattice(1,i)
+       grad(1,i)= mass(i)*harm**2*q1
        if (i.eq.1) then
-          grad(1,i)= grad(1,i)+ mass(i)*interharm**2*(x(1,i)- x(1,i+1))
+          q2=x(1,i+1) - lattice(1,i+1)
+          grad(1,i)= grad(1,i)+ mass(i)*interharm**2*(q1- q2)
        else if (i.eq.natom) then
-          grad(1,i)= grad(1,i)+ mass(i)*interharm**2*(x(1,i)- x(1,i-1))
+          q2=x(1,i-1) - lattice(1,i-1)
+          grad(1,i)= grad(1,i)+ mass(i)*interharm**2*(q1-q2)
        else
-          grad(1,i)= grad(1,i)+ mass(i)*interharm**2*(2.0d0*x(1,i)- x(1,i-1)- x(1,i+1))
+          q2=x(1,i+1) - lattice(1,i+1)
+          q3=x(1,i-1) - lattice(1,i-1)
+          grad(1,i)= grad(1,i)+ mass(i)*interharm**2*(2.0d0*q1 - q2 - q3)
        end if
     end do
 
@@ -73,6 +80,7 @@ contains
     implicit none
     double precision, intent(out)::   hess(:,:,:,:)
     double precision, intent(in)::  x(:,:)
+    double precision:: q1, q2, q3
     integer::              i, j
 
     hess(:,:,:,:)=0.0d0
@@ -101,14 +109,14 @@ contains
     integer, intent(in):: i,j
     double precision:: beadforce, q1, q2
 
-    q1= x(j,1,i) - lattice(1,i)
+    q1= x(j,1,i)
     if (j .eq. n) then
-       q2= x(1,1,i) - lattice(1,i)
+       q2= x(1,1,i)
     else
-       q2= x(j+1,1,i) - lattice(1,i)
+       q2= x(j+1,1,i)
     end if
     
-    beadforce= mass(i)*interharm**2*(q1-q2)
+    beadforce= mass(i)*(q1-q2)/betan**2
 
     return
   end function beadforce
@@ -122,15 +130,35 @@ contains
     double precision:: interforce, q1, q2
 
     q1= x(j,1,i) - lattice(1,i)
-    if (j .lt. n) then
-       q2= x(1,1,i) - lattice(1,i+1)
-       interforce= mass(i)*interharm**2*(x(j,1,i) - x(j, 1, i+1))
+    if (i .lt. natom) then
+       q2= x(j,1,i+1) - lattice(1,i+1)
+       interforce= mass(i)*interharm**2*(q1 - q2)
     else
        interforce=0.0d0
     end if
     
     return
   end function interforce
+
+  !---------------------------------------------------------------------
+  !site energy
+  function siteenergy(p,x,i,j)
+    implicit none
+    double precision, intent(in):: x(:,:,:),p(:,:,:)
+    integer, intent(in):: i,j
+    double precision:: siteenergy, q1, q2
+
+    siteenergy=0.0d0
+    siteenergy=siteenergy+ 0.5d0*p(j,1,i)**2/mass(i)
+    q1= x(j,1,i) - lattice(1,i)
+    if (i .lt. natom) then
+       q2= x(j,1,i+1) - lattice(1,i+1)
+       siteenergy= siteenergy+0.5d0*mass(i)*interharm**2*(q1 - q2)**2
+    end if
+    siteenergy=siteenergy+0.5d0*mass(i)*harm**2*q1**2
+
+    return
+  end function siteenergy
 
 
   !---------------------------------------------------------------------

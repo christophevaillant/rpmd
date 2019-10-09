@@ -43,17 +43,14 @@ contains
     integer:: i,j,k, idof
 
     tcfval(1)=0.0d0
-    do i=1, natom
+    do i=1,natom
        energy=0.0d0
        do j=1,n
-          if (j .eq. n) then
-             energy= energy - (beadforce(x,i,j)*(p(j,1,i) + p(1,1,i)))/mass(i)
-          else
-             energy= energy - (beadforce(x,i,j)*(p(j,1,i) + p(j+1,1,i)))/mass(i)
-          end if
-          if (i .lt. natom) energy= energy + (interforce(x,i,j)*(p(j,1,i) + p(j,1,i+1)))/mass(i)
+          if (i .lt. natom) energy= energy + &
+               0.5d0*(x(j,1,i+1) - x(j,1,i))*interforce(x,i,j)*(p(j,1,i) + p(j,1,i+1))/mass(i)
+          energy= energy+ p(j,1,i)*siteenergy(p,x,i,j)/mass(i)
        end do
-       tcfval(1)= tcfval(1) + 0.5d0*energy/dble(N)
+       tcfval(1)= tcfval(1)+energy/dble(N)
     end do
 
     !langevin thermostat step
@@ -167,21 +164,17 @@ contains
     weight= exp(-betan*potdiff) !min(exp(-betan*potdiff), 1.0d0) !
 
     !work out initial current
-    factors(:)=0.0d0
+    factors(1)=0.0d0
     do i=1,natom
        energy=0.0d0
        do j=1,n
-          if (j .eq. n) then
-             energy= energy - (beadforce(x,i,j)*(p(j,1,i) + p(1,1,i)))/mass(i)
-          else
-             energy= energy - (beadforce(x,i,j)*(p(j,1,i) + p(j+1,1,i)))/mass(i)
-          end if
-          if (i .lt. natom) energy= energy + (interforce(x,i,j)*(p(j,1,i) + p(j,1,i+1)))/mass(i)
+          if (i .lt. natom) energy= energy + &
+               0.5d0*(x(j,1,i+1) - x(j,1,i))*interforce(x,i,j)*(p(j,1,i) + p(j,1,i+1))/mass(i)
+          energy= energy+ p(j,1,i)*siteenergy(p,x,i,j)/mass(i)
        end do
-       factors(1)=factors(1)+ 0.5d0*energy/dble(n)
+       factors(1)= factors(1)+energy/dble(N)
     end do
     factors(2)=1.0d0
-    ! write(*,*) ringpot, potvals, potdiff, weight, factors
 
     deallocate(tempx, rp, rk)
     return
