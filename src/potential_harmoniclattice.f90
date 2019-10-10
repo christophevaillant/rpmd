@@ -153,7 +153,11 @@ contains
     q1= x(j,1,i) - lattice(1,i)
     if (i .lt. natom) then
        q2= x(j,1,i+1) - lattice(1,i+1)
-       siteenergy= siteenergy+0.5d0*mass(i)*interharm**2*(q1 - q2)**2
+       siteenergy= siteenergy+0.25d0*mass(i)*interharm**2*(q1 - q2)**2
+    end if
+    if (i .gt. 1) then
+       q2= x(j,1,i-1) - lattice(1,i-1)
+       siteenergy= siteenergy+0.25d0*mass(i)*interharm**2*(q2 - q1)**2
     end if
     siteenergy=siteenergy+0.5d0*mass(i)*harm**2*q1**2
 
