@@ -21,7 +21,6 @@ contains
     allocate(lattice(1,natom))
     do i=1, natom
        lattice(1,i)= i*spacing
-       write(*,*)i, lattice(1,i)
     end do
     V0=0.0d0
     return
