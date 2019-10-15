@@ -311,8 +311,8 @@ contains
 
   subroutine step_v(time,x,p, force, recalculate)
     implicit none
-    double precision, intent(in):: force(:, :,:), time
-    double precision, intent(inout):: p(:,:,:), x(:,:,:)
+    double precision, intent(in)::  time
+    double precision, intent(inout):: force(:, :,:),p(:,:,:), x(:,:,:)
     integer::         i,j,k
     logical, intent(in):: recalculate
 

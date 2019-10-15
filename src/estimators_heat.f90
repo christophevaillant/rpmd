@@ -94,7 +94,7 @@ contains
   !-----------------------------------------------------
   !function for initializing a path
   subroutine init_path(x, p, factors,weight)
-    double precision, intent(out):: x(:,:,:), p(:,:,:),weight,factors(:)
+    double precision, intent(inout):: x(:,:,:), p(:,:,:),weight,factors(:)
     double precision, allocatable:: tempx(:),rk(:,:),rp(:), grad(:,:,:), centroidx(:,:)
     double precision::              stdev, potvals, ringpot, potdiff
     double precision::              prob, stdevharm, energy
@@ -162,7 +162,6 @@ contains
     end do
     potdiff= (ringpot- potvals)
     weight= exp(-betan*potdiff) !min(exp(-betan*potdiff), 1.0d0) !
-
     !work out initial current
     factors(1)=0.0d0
     do i=1,natom

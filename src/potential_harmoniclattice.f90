@@ -7,7 +7,8 @@ module potential
   public
 
 contains
-  subroutine V_init()
+  subroutine V_init(iproc)
+    integer, intent(in):: iproc
     integer:: i
     namelist /POTDATA/ spacing, harm, interharm, gammaheat
 
@@ -16,7 +17,7 @@ contains
     interharm=1.0d-2
     gammaheat=1.0d0
 
-    read(5, nml=POTDATA)
+    if (iproc.eq.0) read(5, nml=POTDATA)
 
     allocate(lattice(1,natom))
     do i=1, natom
