@@ -123,40 +123,36 @@ contains
 
   !---------------------------------------------------------------------
   !interatomic force, no pbc
-  function interforce(x,i,j)
+  function interforce(x1,x2,i)
     implicit none
-    double precision, intent(in):: x(:,:,:)
-    integer, intent(in):: i,j
+    double precision, intent(in):: x1,x2
+    integer, intent(in):: i
     double precision:: interforce, q1, q2
 
-    q1= x(j,1,i) - lattice(1,i)
-    if (i .lt. natom) then
-       q2= x(j,1,i+1) - lattice(1,i+1)
-       interforce= mass(i)*interharm**2*(q1 - q2)
-    else
-       interforce=0.0d0
-    end if
+    q1= x1 - lattice(1,i)
+    q2= x2 - lattice(1,i+1)
+    interforce= mass(i)*interharm**2*(q1 - q2)
     
     return
   end function interforce
 
   !---------------------------------------------------------------------
   !site energy
-  function siteenergy(p,x,i,j)
+  function siteenergy(p,x1,x2,x3,i)
     implicit none
-    double precision, intent(in):: x(:,:,:),p(:,:,:)
-    integer, intent(in):: i,j
+    double precision, intent(in):: p,x1,x2, x3
+    integer, intent(in):: i
     double precision:: siteenergy, q1, q2
 
     siteenergy=0.0d0
-    siteenergy=siteenergy+ 0.5d0*p(j,1,i)**2/mass(i)
-    q1= x(j,1,i) - lattice(1,i)
+    siteenergy=siteenergy+ 0.5d0*p**2/mass(i)
+    q1= x1 - lattice(1,i)
     if (i .lt. natom) then
-       q2= x(j,1,i+1) - lattice(1,i+1)
+       q2= x2 - lattice(1,i+1)
        siteenergy= siteenergy+0.25d0*mass(i)*interharm**2*(q1 - q2)**2
     end if
     if (i .gt. 1) then
-       q2= x(j,1,i-1) - lattice(1,i-1)
+       q2= x3 - lattice(1,i-1)
        siteenergy= siteenergy+0.25d0*mass(i)*interharm**2*(q2 - q1)**2
     end if
     siteenergy=siteenergy+0.5d0*mass(i)*harm**2*q1**2

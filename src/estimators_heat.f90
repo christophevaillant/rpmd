@@ -40,17 +40,28 @@ contains
     double precision, intent(out):: tcfval(:)
     double precision,allocatable:: v(:,:), newp(:), grad(:,:,:)
     double precision:: s, energy, prob, stdev, a1,a2
+    double precision:: pcentr1, pcentr2, xcentr1, xcentr2, xcentr3
     integer:: i,j,k, idof
 
     tcfval(1)=0.0d0
     do i=1,natom
-       energy=0.0d0
-       do j=1,n
-          if (i .lt. natom) energy= energy + &
-               0.5d0*(x(j,1,i+1) - x(j,1,i))*interforce(x,i,j)*(p(j,1,i) + p(j,1,i+1))/mass(i)
-          energy= energy+ p(j,1,i)*siteenergy(p,x,i,j)/mass(i)
-       end do
-       tcfval(1)= tcfval(1)+energy/dble(N)
+       xcentr1= centroid(x(:,1,i))
+       pcentr1= centroid(p(:,1,i))
+          if (i .lt. natom) then
+             xcentr2= centroid(x(:,1,i+1))
+             pcentr2= centroid(p(:,1,i+1))             
+             tcfval(1)= tcfval(1) + &
+                  0.5d0*(xcentr2 - xcentr1)*interforce(xcentr1, xcentr2,i)*(pcentr1 + pcentr2)/mass(i)
+          else
+             xcentr2=0.0d0
+             pcentr2=0.0d0
+          end if
+          if (i .gt. 1) then
+             xcentr3= centroid(x(:,1,i-1))
+          else
+             xcentr3=0.0d0
+          end if
+          tcfval(1)= tcfval(1)+ pcentr1*siteenergy(pcentr1, xcentr1, xcentr2,xcentr3,i)/mass(i)
     end do
 
     !langevin thermostat step
@@ -84,7 +95,7 @@ contains
     end do
 
 
-    tcfval(2)= tcfval(1)
+    tcfval(2)= tcfval(1)**2
     deallocate(newp)
 
     return
@@ -98,6 +109,7 @@ contains
     double precision, allocatable:: tempx(:),rk(:,:),rp(:), grad(:,:,:), centroidx(:,:)
     double precision::              stdev, potvals, ringpot, potdiff
     double precision::              prob, stdevharm, energy
+    double precision:: pcentr1, pcentr2, xcentr1, xcentr2, xcentr3
     integer::                       i,j,k, idof, imin(1), inn
 
     allocate(rp(n),tempx(1))
@@ -165,14 +177,34 @@ contains
     !work out initial current
     factors(1)=0.0d0
     do i=1,natom
-       energy=0.0d0
-       do j=1,n
-          if (i .lt. natom) energy= energy + &
-               0.5d0*(x(j,1,i+1) - x(j,1,i))*interforce(x,i,j)*(p(j,1,i) + p(j,1,i+1))/mass(i)
-          energy= energy+ p(j,1,i)*siteenergy(p,x,i,j)/mass(i)
-       end do
-       factors(1)= factors(1)+energy/dble(N)
+       xcentr1= centroid(x(:,1,i))
+       pcentr1= centroid(p(:,1,i))
+          if (i .lt. natom) then
+             xcentr2= centroid(x(:,1,i+1))
+             pcentr2= centroid(p(:,1,i+1))             
+             factors(1)= factors(1) + &
+                  0.5d0*(xcentr2 - xcentr1)*interforce(xcentr1, xcentr2,i)*(pcentr1 + pcentr2)/mass(i)
+          else
+             xcentr2=0.0d0
+             pcentr2=0.0d0
+          end if
+          if (i .gt. 1) then
+             xcentr3= centroid(x(:,1,i-1))
+          else
+             xcentr3=0.0d0
+          end if
+          factors(1)= factors(1)+ pcentr1*siteenergy(pcentr1, xcentr1, xcentr2,xcentr3,i)/mass(i)
     end do
+    ! factors(1)=0.0d0
+    ! do i=1,natom
+    !    energy=0.0d0
+    !    do j=1,n
+    !       if (i .lt. natom) energy= energy + &
+    !            0.5d0*(x(j,1,i+1) - x(j,1,i))*interforce(x,i,j)*(p(j,1,i) + p(j,1,i+1))/mass(i)
+    !       energy= energy+ p(j,1,i)*siteenergy(p,x,i,j)/mass(i)
+    !    end do
+    !    factors(1)= factors(1)+energy/dble(N)
+    ! end do
     factors(2)=1.0d0
 
     deallocate(tempx, rp, rk)
