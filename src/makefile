@@ -16,8 +16,6 @@ PREPOTFILES= $(OBJDIR)/mkl_dfti.o $(OBJDIR)/general.o
 .SECONDEXPANSION:
 POSTPOTFILES= $(OBJDIR)/instantonmod.o $(OBJDIR)/verletmodule.o
 
-# RATEFILES= $(OBJDIR)/estimators_rates.o
-
 #1D eckart barrier :
 ECKARTFILES= $(OBJDIR)/potential_eckart.o
 
@@ -35,10 +33,10 @@ rpmd_harmonic_heat_par: POSTPOTFILES= $(OBJDIR)/instantonmod.o $(OBJDIR)/estimat
 ###################################################################################
 #Compilation commands for object files
 $(OBJDIR)/%.o: %.f
-	$(FC) -c $(FFLAGS) $< -o $@
+	$(FC) $(INCLUDE) -c $(FFLAGS) $< -o $@
 
 $(OBJDIR)/%.o: %.f90
-	$(FC) -c $(FFLAGS) $< -o $@
+	$(FC) $(INCLUDE) -c $(FFLAGS) $< -o $@
 
 $(OBJDIR)/heattransport_par.o: heattransport_par.f90
 	$(MPIFC) $(INCLUDE) -c $(FFLAGS) $< -o $@
