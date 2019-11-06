@@ -120,8 +120,15 @@ contains
     double precision, allocatable::  force(:,:,:), pip(:,:,:)
 
     allocate(force(n, ndim, natom), pip(n, ndim, natom))
-    call step_v(dt, xprop, vprop, force, .true.)
-    call step_nm(dt,xprop,vprop ,.true.)
+    force(:,:,:)=0.0d0
+    if (n .gt. 1) then
+       call step_v(dt, xprop, vprop, force, .true.)
+       call step_nm(dt,xprop,vprop ,.true.)
+    else
+       call step_v(0.5d0*dt, xprop, vprop, force, .true.)
+       call step_classical(dt, xprop, vprop)
+       call step_v(0.5d0*dt, xprop, vprop, force, .true.)
+    end if
     deallocate(force)
     return
   end subroutine time_step
@@ -330,6 +337,26 @@ contains
     end do
 
   end subroutine step_v
+  !-----------------------------------------------------
+  !-----------------------------------------------------
+
+  subroutine step_classical(time,x,p)
+    implicit none
+    double precision, intent(in)::  time
+    double precision, intent(inout):: p(:,:,:), x(:,:,:)
+    integer::         i,j,k
+
+    do j=1,ndim
+       do k=1,natom
+          x(i,j,k)= x(i,j,k) + p(i,j,k)*time/mass(k)
+          if (p(i,j,k) .ne. p(i,j,k)) then
+             write(*,*) "NaN in classical propagation"
+             stop
+          end if
+       end do
+    end do
+
+  end subroutine step_classical
   !-----------------------------------------------------
   !-----------------------------------------------------
 
