@@ -6,11 +6,12 @@ module estimators
   implicit none
 
   public:: init_estimators, estimator, finalize_estimators,transfreqs, init_path, whichestim,&
-       betaright, betaleft, width, transition, normalvec, hess, normalization
+       betaright, betaleft, width, transition, normalvec, hess, normalization, convection
 
   private
 
   logical, allocatable:: whichestim(:)
+  logical:: convection
   double precision, allocatable:: transition(:,:), normalvec(:,:), transfreqs(:)
   double precision, allocatable:: lambda(:,:), hess(:,:)
   double precision:: betaleft, betaright, width
@@ -48,7 +49,7 @@ contains
        do j=1,n
           if (i .lt. natom) energy= energy + &
                0.5d0*(x(j,1,i+1) - x(j,1,i))*interforce(x,i,j)*(p(j,1,i) + p(j,1,i+1))/mass(i)
-          energy= energy+ p(j,1,i)*siteenergy(p,x,i,j)/mass(i)
+          if (convection) energy= energy+ p(j,1,i)*siteenergy(p,x,i,j)/mass(i)
        end do
        tcfval(1)= tcfval(1)+energy/dble(N)
     end do
@@ -58,6 +59,7 @@ contains
     a1=exp(-gammaheat*dt)!
     a2= sqrt(1.0d0- a1**2)
     errcode_normal = vdrnggaussian(rmethod_normal,stream_normal,ndof,newp,0.0d0,1.0d0)
+    !middle atoms
     do i=1, ndim
        do j=2, natom-1
           idof= calcidof(i,j)
@@ -67,14 +69,15 @@ contains
           end do
        end do
     end do
-
     do i=1, ndim
+       !left reservoir
        j=1
        idof= calcidof(i,j)
        do k=1,n
           p(k,i,j)= (a1**2)*p(k,i,j) + &
                sqrt(mass(j)/betaleft)*a2*sqrt(1.0+a1**2)*newp(idof)
        end do
+       !right reservoir
        j=natom
        idof= calcidof(i,j)
        do k=1,n
@@ -84,7 +87,7 @@ contains
     end do
 
 
-    tcfval(2)= tcfval(1)
+    tcfval(2)= tcfval(1)**2
     deallocate(newp)
 
     return
@@ -98,7 +101,7 @@ contains
     double precision, allocatable:: tempx(:),rk(:,:),rp(:), grad(:,:,:), centroidx(:,:)
     double precision::              stdev, potvals, ringpot, potdiff
     double precision::              prob, stdevharm, energy
-    integer::                       i,j,k, idof, imin(1), inn
+    integer::                       i,j,k, idof, imin(1)
 
     allocate(rp(n),tempx(1))
     allocate(rk(n,ndof))
@@ -168,8 +171,8 @@ contains
        energy=0.0d0
        do j=1,n
           if (i .lt. natom) energy= energy + &
-               0.5d0*(x(j,1,i+1) - x(j,1,i))*interforce(x,i,j)*(p(j,1,i) + p(j,1,i+1))/mass(i)
-          energy= energy+ p(j,1,i)*siteenergy(p,x,i,j)/mass(i)
+               0.5d0*(x(j,1,i+1) - x(j,1,i) )*interforce(x,i,j)*(p(j,1,i) + p(j,1,i+1))/mass(i)
+          if (convection) energy= energy+ p(j,1,i)*siteenergy(p,x,i,j)/mass(i)
        end do
        factors(1)= factors(1)+energy/dble(N)
     end do

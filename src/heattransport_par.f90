@@ -35,7 +35,7 @@ program rpmd
 
   namelist /MCDATA/ n, beta, NMC, noutput,dt, iprint,imin,tau,&
        nrep, use_fft, thermostat, ndim, natom, xunit,gamma, &
-       outputtcf, latticemass, deltaT, width
+       outputtcf, latticemass, deltaT, width, convection
 
   !initialize MPI
   nproc=0
@@ -72,6 +72,7 @@ program rpmd
   deltaT=0.0d0
   outputtcf=.true.
   width=1.0d-1
+  convection=.false.
 
   !-----------------------------------------
   !Read in parameters for processor 0 and distribute to all processors
@@ -101,6 +102,8 @@ program rpmd
   call MPI_Bcast(imin, 1, MPI_INTEGER, 0,MPI_COMM_WORLD, ierr)
   call MPI_Bcast(ndim, 1, MPI_INTEGER, 0,MPI_COMM_WORLD, ierr)
   call MPI_Bcast(natom, 1, MPI_INTEGER, 0,MPI_COMM_WORLD, ierr)
+  call MPI_Bcast(convection, 1, MPI_LOGICAL, 0,MPI_COMM_WORLD, ierr)
+  call MPI_Bcast(use_fft, 1, MPI_LOGICAL, 0,MPI_COMM_WORLD, ierr)
 
   call V_init(iproc)
 

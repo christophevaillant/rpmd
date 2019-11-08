@@ -53,6 +53,7 @@ program rpmd
   deltaT=1.0d0
   outputtcf=.true.
   width=1.0d-1
+  convection=.false.
 
   read(5, nml=MCDATA)
   betan= beta/dble(n)
