@@ -103,6 +103,7 @@ contains
        if (i .gt. imin) then
           call estimator(xprop, vprop, tcf(:,i))
        end if
+       call pot_thermostat(xprop,vprop)
     end do
     deallocate(pprop, tempv, tempp)
     if (thermostat .eq. 2) deallocate(c1,c2)

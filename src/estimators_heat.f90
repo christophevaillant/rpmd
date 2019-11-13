@@ -6,7 +6,7 @@ module estimators
   implicit none
 
   public:: init_estimators, estimator, finalize_estimators,transfreqs, init_path, whichestim,&
-       betaright, betaleft, width, transition, normalvec, hess, normalization, convection
+       transition, normalvec, hess, normalization, convection
 
   private
 
@@ -14,7 +14,6 @@ module estimators
   logical:: convection
   double precision, allocatable:: transition(:,:), normalvec(:,:), transfreqs(:)
   double precision, allocatable:: lambda(:,:), hess(:,:)
-  double precision:: betaleft, betaright, width
 
 contains
 
@@ -39,56 +38,27 @@ contains
     implicit none
     double precision, intent(inout):: x(:,:,:), p(:,:,:)
     double precision, intent(out):: tcfval(:)
-    double precision,allocatable:: v(:,:), newp(:), grad(:,:,:)
-    double precision:: s, energy, prob, stdev, a1,a2
+    double precision:: s, energy, prob, stdev
     integer:: i,j,k, idof
 
     tcfval(1)=0.0d0
     do i=1,natom
        energy=0.0d0
        do j=1,n
+          ! if (i .lt. natom) energy= energy + &
+          !      (x(j,1,i+1) - x(j,1,i))*interforce(x,i,j)*p(j,1,i)/mass(i)
+          ! if (i .gt. 1) energy= energy + &
+          !      (x(j,1,i) - x(j,1,i-1))*interforce(x,i-1,j)*p(j,1,i)/mass(i)
           if (i .lt. natom) energy= energy + &
                0.5d0*(x(j,1,i+1) - x(j,1,i))*interforce(x,i,j)*(p(j,1,i) + p(j,1,i+1))/mass(i)
+          if (i .gt. 1) energy= energy + &
+               0.5d0*(x(j,1,i) - x(j,1,i-1))*interforce(x,i-1,j)*(p(j,1,i-1) + p(j,1,i))/mass(i)
           if (convection) energy= energy+ p(j,1,i)*siteenergy(p,x,i,j)/mass(i)
        end do
        tcfval(1)= tcfval(1)+energy/dble(N)
     end do
 
-    !langevin thermostat step
-    allocate(newp(ndof))
-    a1=exp(-gammaheat*dt)!
-    a2= sqrt(1.0d0- a1**2)
-    errcode_normal = vdrnggaussian(rmethod_normal,stream_normal,ndof,newp,0.0d0,1.0d0)
-    !middle atoms
-    do i=1, ndim
-       do j=2, natom-1
-          idof= calcidof(i,j)
-          do k=1,n
-             p(k,i,j)= (a1**2)*p(k,i,j) + &
-                  sqrt(mass(j)/beta)*a2*sqrt(1.0+a1**2)*newp(idof)
-          end do
-       end do
-    end do
-    do i=1, ndim
-       !left reservoir
-       j=1
-       idof= calcidof(i,j)
-       do k=1,n
-          p(k,i,j)= (a1**2)*p(k,i,j) + &
-               sqrt(mass(j)/betaleft)*a2*sqrt(1.0+a1**2)*newp(idof)
-       end do
-       !right reservoir
-       j=natom
-       idof= calcidof(i,j)
-       do k=1,n
-          p(k,i,j)= (a1**2)*p(k,i,j) + &
-               sqrt(mass(j)/betaright)*a2*sqrt(1.0+a1**2)*newp(idof)
-       end do
-    end do
-
-
-    tcfval(2)= tcfval(1)**2
-    deallocate(newp)
+    tcfval(2)= tcfval(1)
 
     return
   end subroutine estimator
@@ -100,17 +70,19 @@ contains
     double precision, intent(inout):: x(:,:,:), p(:,:,:),weight,factors(:)
     double precision, allocatable:: tempx(:),rk(:,:),rp(:), grad(:,:,:), centroidx(:,:)
     double precision::              stdev, potvals, ringpot, potdiff
-    double precision::              prob, stdevharm, energy
+    double precision::              prob, stdevharm, energy, totp
     integer::                       i,j,k, idof, imin(1)
 
-    allocate(rp(n),tempx(1))
+    allocate(rp(n),tempx(ndof))
     allocate(rk(n,ndof))
-    potvals=0.0d0
     stdev= 1.0d0/sqrt(betan)
     x(:,:,:)= 0.0d0
     p(:,:,:)= 0.0d0
 
-    do idof=1, ndof
+    do i=1,ndim
+       do j=1,natom
+          idof= calcidof(i,j)
+          if (n .gt. 1) then
           !---------------------------
           !generate random numbers for chain
           errcode_normal = vdrnggaussian(rmethod_normal,stream_normal,n,rp,0.0d0,stdev)!ringpolymer
@@ -134,51 +106,60 @@ contains
           else
              call linear_transform_backward(rp, rk(:,idof), idof)
           end if
-    end do
-    !---------------------------
-    !transform to global cartesian coordinates    
-    potvals=0.0d0
-    do i=1,ndim
-       do j=1,natom
-          idof= calcidof(i,j)
-          stdevharm= 1.0d0/sqrt(beta*transfreqs(idof)*mass(j))
-          stdev= 1.0d0/sqrt(betan)
-          errcode_normal = vdrnggaussian(rmethod_normal,stream_normal,1,tempx,lattice(i,j),stdevharm)!sites
+          else
+             rk(1,idof)=0.0d0
+          end if
           errcode_normal = vdrnggaussian(rmethod_normal,stream_normal,n,p(:,i,j),0.0d0,stdev)!momenta
-          x(:,i,j)= rk(:,idof) + tempx(1)
-          do k=1, n
-             potvals=potvals + 0.5d0*mass(j)*transfreqs(idof)*(x(k,i,j)-lattice(i,j))**2 
-          end do
           p(:,i,j)= p(:,i,j)*sqrt(mass(j))
        end do
     end do
-
+    ! do k=1,n
+    !    do i=1,ndim
+    !       totp=0.0d0
+    !       do j=1,natom
+    !          totp=totp+ p(k,i,j)
+    !       end do
+    !       p(k,i,:)= p(k,i,:) - totp
+    !    end do
+    ! end do
+    !---------------------------
+    !transform to global cartesian coordinates
+    stdevharm= 1.0d0/sqrt(beta)
+    errcode_normal = vdrnggaussian(rmethod_normal,stream_normal,ndof,tempx,0.0d0,stdevharm)
+    tempx(:)= tempx(:)/sqrt(transfreqs(:))
+    potvals=0.0d0
+    do k=1, ndof
+       potvals=potvals + 0.5d0*transfreqs(k)*tempx(k)**2 
+    end do
+    x(1,:,:)= reshape(matmul(transpose(hess),tempx), (/ndim,natom/))
+    do i=1,n
+       x(i,:,:)= x(1,:,:)
+    end do
+    do i=1,ndim
+       do j=1,natom
+          idof= calcidof(i,j)
+          x(:,i,j)= x(:,i,j)/sqrt(mass(j)) + lattice(i,j) + rk(:,idof)
+       end do
+    end do
+    
+    ! ringpot= 0.0d0
+    ! do k=1,n
+    !    ringpot= ringpot+ pot(x(k,:,:))
+    ! end do
     allocate(centroidx(ndim,natom))
     do i=1,ndim
        do j=1,natom
           centroidx(i,j)= centroid(x(:,i,j))
        end do
     end do
-    ringpot= 0.0d0
-    do k=1,n
-       ringpot= ringpot+ pot(x(k,:,:))
-    end do
+    ringpot= pot(centroidx)
     potdiff= (ringpot- potvals)
-    weight= exp(-betan*potdiff) !min(exp(-betan*potdiff), 1.0d0) !
+    weight= exp(-beta*potdiff)
     !work out initial current
-    factors(1)=0.0d0
-    do i=1,natom
-       energy=0.0d0
-       do j=1,n
-          if (i .lt. natom) energy= energy + &
-               0.5d0*(x(j,1,i+1) - x(j,1,i) )*interforce(x,i,j)*(p(j,1,i) + p(j,1,i+1))/mass(i)
-          if (convection) energy= energy+ p(j,1,i)*siteenergy(p,x,i,j)/mass(i)
-       end do
-       factors(1)= factors(1)+energy/dble(N)
-    end do
+    call estimator(x,p,factors)
     factors(2)=1.0d0
-
-    deallocate(tempx, rp, rk)
+    
+    deallocate(tempx, rp, rk, centroidx)
     return
   end subroutine init_path
 

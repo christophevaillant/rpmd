@@ -27,7 +27,7 @@ program rpmd
   logical::                        latticemass
   namelist /MCDATA/ n, beta, NMC, noutput,dt, iprint,imin,tau,&
        nrep, use_fft, thermostat, ndim, natom, xunit,gamma, &
-       outputtcf, latticemass, deltaT, width
+       outputtcf, latticemass, deltaT, convection
 
   !-------------------------
   !Set default system parameters then read in namelist
@@ -52,7 +52,6 @@ program rpmd
   latticemass=.false.
   deltaT=1.0d0
   outputtcf=.true.
-  width=1.0d-1
   convection=.false.
 
   read(5, nml=MCDATA)
@@ -71,7 +70,7 @@ program rpmd
      write(*,*) "gamma=", gamma
      write(*,*) "Running with Langevin thermostat"
   end if
-  call V_init()
+  call V_init(0)
   ndof= ndim*natom
   totdof= ndof*n
 
@@ -110,7 +109,7 @@ program rpmd
 
   allocate(hess(ndof,ndof), transfreqs(ndof))
   call findhess(transition, hess)
-  call findnormal(transition, hess, transfreqs,normalvec)
+  call findnormal(hess, transfreqs,normalvec)
   V0= pot(transition)
   write(*,*) "Energy zero=", V0
   !-------------------------

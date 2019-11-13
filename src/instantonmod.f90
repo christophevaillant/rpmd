@@ -736,9 +736,9 @@ end subroutine centreofmass
     deallocate(hesstemp)
   end subroutine findhess
 
-subroutine findnormal(x, hess, freqs,normal)
+subroutine findnormal(hess, freqs,normal)
   implicit none
-  double precision, intent(in)::   x(:,:), hess(:,:)
+  double precision, intent(inout)::   hess(:,:)
   double precision, intent(out)::  freqs(:), normal(:,:)
   integer::                        ldz, lwork, liwork, info
   integer::                        i,j,idof
@@ -769,5 +769,16 @@ subroutine findnormal(x, hess, freqs,normal)
   end do
 
 end subroutine findnormal
+
+  !---------------------------------------------------------------------
+  subroutine  massweightedhess(x,hess)
+    implicit none
+    double precision::     hess(:,:,:,:), x(:,:), dummy1, eps
+    integer::              i, j
+
+    call Vdoubleprime(x,hess)
+    hess(1,1,1,1)=hess(1,1,1,1)/mass(1)
+    return
+  end subroutine Massweightedhess
 
 end module instantonmod

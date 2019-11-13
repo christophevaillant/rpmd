@@ -35,7 +35,7 @@ program rpmd
 
   namelist /MCDATA/ n, beta, NMC, noutput,dt, iprint,imin,tau,&
        nrep, use_fft, thermostat, ndim, natom, xunit,gamma, &
-       outputtcf, latticemass, deltaT, width, convection
+       outputtcf, latticemass, deltaT, convection
 
   !initialize MPI
   nproc=0
@@ -71,7 +71,6 @@ program rpmd
   latticemass=.false.
   deltaT=0.0d0
   outputtcf=.true.
-  width=1.0d-1
   convection=.false.
 
   !-----------------------------------------
@@ -83,6 +82,7 @@ program rpmd
      call system_clock(time1, irate, imax)
      write(*,*)"Running with parameters (in a.u.):"
      write(*,*) "beta, betan, n=", beta, betan, n
+     write(*,*) "ndim, natom=", ndim, natom
      write(*,*) "NMC, Noutput, dt=", NMC, Noutput, dt
      write(*,*) "Nrep=", nrep
      if (thermostat .eq. 1) then
@@ -138,7 +138,7 @@ program rpmd
      if (xunit .eq. 2) transition(:,:)= transition(:,:)/0.529177d0
 
      call findhess(transition, hess)
-     call findnormal(transition, hess, transfreqs,normalvec)
+     call findnormal(hess, transfreqs,normalvec)
   end if
 
   !-------------------------------------
@@ -154,6 +154,7 @@ program rpmd
   call MPI_Bcast(transition, ndof, MPI_DOUBLE_PRECISION, 0,MPI_COMM_WORLD, ierr)
   call MPI_Bcast(transfreqs, ndof, MPI_DOUBLE_PRECISION, 0,MPI_COMM_WORLD, ierr)
   call MPI_Bcast(normalvec, ndof, MPI_DOUBLE_PRECISION, 0,MPI_COMM_WORLD, ierr)
+  call MPI_Bcast(hess, ndof*ndof, MPI_DOUBLE_PRECISION, 0,MPI_COMM_WORLD, ierr)
   ! call MPI_Bcast(label, natom, MPI_CHARACTER, 0,MPI_COMM_WORLD, ierr) !might need this later
 
   !-----------------------------
@@ -231,7 +232,7 @@ program rpmd
               totaltcf(i,j)= totaltcf(i,j) + alltcfs(i,j,ii)/dble(nproc)
            end do
         end do
-        totalweight= totalweight+ allweights(i)/dble(nproc)
+        totalweight= totalweight+ allweights(ii)/dble(nproc)
      end do
      write(*,*) "totalweight:", totalweight
      write(*,*) allweights(:)

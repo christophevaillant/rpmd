@@ -3,6 +3,7 @@ module potential
   implicit none
   double precision::               harm, interharm, V0, gammaheat,spacing
   double precision, allocatable::  lattice(:,:)
+  double precision:: betaleft, betaright
 
   public
 
@@ -148,8 +149,7 @@ contains
     integer, intent(in):: i,j
     double precision:: siteenergy, q1, q2
 
-    siteenergy=0.0d0
-    siteenergy=siteenergy+ 0.5d0*p(j,1,i)**2/mass(i)
+    siteenergy=0.5d0*p(j,1,i)**2/mass(i)
     q1= x(j,1,i) - lattice(1,i)
     if (i .lt. natom) then
        q2= x(j,1,i+1) - lattice(1,i+1)
@@ -164,17 +164,49 @@ contains
     return
   end function siteenergy
 
-
   !---------------------------------------------------------------------
-  subroutine  massweightedhess(x,hess)
+    !langevin thermostat step
+  subroutine pot_thermostat(x,p)
     implicit none
-    double precision::     hess(:,:,:,:), x(:,:), dummy1, eps
-    integer::              i, j
+    double precision, intent(inout):: x(:,:,:), p(:,:,:)
+    double precision,allocatable:: v(:,:), newp(:), grad(:,:,:)
+    double precision:: a1,a2
+    integer:: i,j,k, idof
 
-    call Vdoubleprime(x,hess)
-    hess(1,1,1,1)=hess(1,1,1,1)/mass(1)
-    return
-  end subroutine Massweightedhess
+    allocate(newp(ndof))
+    a1=exp(-gammaheat*dt)!
+    a2= sqrt(1.0d0- a1**2)
+    errcode_normal = vdrnggaussian(rmethod_normal,stream_normal,ndof,newp,0.0d0,1.0d0)
+    !middle atoms
+    do i=1, ndim
+       do j=2, natom-1
+          idof= calcidof(i,j)
+          do k=1,n
+             p(k,i,j)= (a1**2)*p(k,i,j) + &
+                  sqrt(mass(j)/beta)*a2*sqrt(1.0+a1**2)*newp(idof)
+          end do
+       end do
+    end do
+    do i=1, ndim
+       !left reservoir
+       j=1
+       idof= calcidof(i,j)
+       do k=1,n
+          p(k,i,j)= (a1**2)*p(k,i,j) + &
+               sqrt(mass(j)/betaleft)*a2*sqrt(1.0+a1**2)*newp(idof)
+       end do
+       !right reservoir
+       j=natom
+       idof= calcidof(i,j)
+       do k=1,n
+          p(k,i,j)= (a1**2)*p(k,i,j) + &
+               sqrt(mass(j)/betaright)*a2*sqrt(1.0+a1**2)*newp(idof)
+       end do
+    end do
+
+
+    deallocate(newp)
+  end subroutine pot_thermostat
 
 
   function calcpartition()
