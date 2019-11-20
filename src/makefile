@@ -22,6 +22,9 @@ ECKARTFILES= $(OBJDIR)/potential_eckart.o
 #1D harmonic lattice:
 HARMFILES= $(OBJDIR)/potential_harmoniclattice.o
 
+#1D harmonic potential:
+SHOFILES= $(OBJDIR)/potential_SHO.o
+
 rpmd_eckart_rate: POSTPOTFILES= $(OBJDIR)/instantonmod.o $(OBJDIR)/estimators_rates.o $(OBJDIR)/verletmodule.o
 
 rpmd_eckart_flux: POSTPOTFILES= $(OBJDIR)/instantonmod.o $(OBJDIR)/estimators_fluxflux.o $(OBJDIR)/verletmodule.o
@@ -29,6 +32,8 @@ rpmd_eckart_flux: POSTPOTFILES= $(OBJDIR)/instantonmod.o $(OBJDIR)/estimators_fl
 rpmd_harmonic_heat_ser: POSTPOTFILES= $(OBJDIR)/instantonmod.o $(OBJDIR)/estimators_heat.o $(OBJDIR)/verletmodule.o
 
 rpmd_harmonic_heat_par: POSTPOTFILES= $(OBJDIR)/instantonmod.o $(OBJDIR)/estimators_heat.o $(OBJDIR)/verletmodule.o
+
+rpmd_sho_position: POSTPOTFILES= $(OBJDIR)/instantonmod.o $(OBJDIR)/estimators_position.o $(OBJDIR)/verletmodule.o
 
 ###################################################################################
 #Compilation commands for object files
@@ -63,6 +68,11 @@ rpmd_harmonic_heat_ser: $(PREPOTFILES) $(HARMFILES) $$(POSTPOTFILES) $(OBJDIR)/h
 
 rpmd_harmonic_heat_par: $(PREPOTFILES) $(HARMFILES) $$(POSTPOTFILES) $(OBJDIR)/heattransport_par.o
 	$(MPIFC) $(FFLAGS) $(PREPOTFILES) $(HARMFILES) $(POSTPOTFILES) $(OBJDIR)/heattransport_par.o -o $(BUILDDIR)/$@ $(FLIBS)
+
+################################
+#harmonic potential:
+rpmd_sho_position: $(PREPOTFILES) $(SHOFILES) $$(POSTPOTFILES) $(OBJDIR)/position_ser.o
+	$(FC) $(FFLAGS) $(PREPOTFILES) $(SHOFILES) $(POSTPOTFILES) $(OBJDIR)/position_ser.o -o $(BUILDDIR)/$@ $(FLIBS)
 
 ###################################################################################
 #Rules for cleanup

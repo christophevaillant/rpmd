@@ -346,14 +346,16 @@ contains
     double precision, intent(in)::  time
     double precision, intent(inout):: p(:,:,:), x(:,:,:)
     integer::         i,j,k
-
-    do j=1,ndim
-       do k=1,natom
-          x(i,j,k)= x(i,j,k) + p(i,j,k)*time/mass(k)
-          if (p(i,j,k) .ne. p(i,j,k)) then
-             write(*,*) "NaN in classical propagation"
-             stop
-          end if
+    
+    do i=1,n
+       do j=1,ndim
+          do k=1,natom
+             x(i,j,k)= x(i,j,k) + p(i,j,k)*time/mass(k)
+             if (p(i,j,k) .ne. p(i,j,k)) then
+                write(*,*) "NaN in classical propagation"
+                stop
+             end if
+          end do
        end do
     end do
 
