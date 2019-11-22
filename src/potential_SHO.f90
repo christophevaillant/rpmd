@@ -52,7 +52,7 @@ contains
     double precision:: q1, q2, q3
     integer::              i, j
 
-    ! hess(1,1,1,1)=3.0d0*x(1,1)**2 + omega**2
+    ! hess(1,1,1,1)=3.0d0*x(1,1)**2! + omega**2
     ! hess(1,1,1,1)=1.0d0 + 0.6d0*x(1,1) + 1.2d-1*x(1,1)**2
     hess(1,1,1,1)=mass(1)*omega**2
 

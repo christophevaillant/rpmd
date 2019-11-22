@@ -43,32 +43,13 @@ contains
     integer:: i,j,k, idof
 
        tcfval(:)=0.0d0
-       do i=1, n-splitbead,1
-          s=1.0d0
-          do j=0, splitbead-1
-             s=s*x(i+j,1,1)
-          end do
-          tcfval(1)=tcfval(1) + s/dble(N)
-          tcfval(2)=tcfval(2) + x(i,1,1)**splitbead/dble(N)
-          tcfval(3)= tcfval(3) + x(i,1,1)/dble(N)
+
+       do i=1,n
+          tcfval(1)=tcfval(1)+x(i,1,1)
+          tcfval(2)=tcfval(2)+x(i,1,1)**2
+          tcfval(3)=tcfval(3)+x(i,1,1)**3
        end do
-       tcfval(3)= tcfval(3)**splitbead
-       tcfval(1)=tcfval(1) + x(n-1,1,1)*x(n,1,1)*x(1,1,1)/dble(N)
-       tcfval(1)=tcfval(1) + x(n,1,1)*x(1,1,1)*x(2,1,1)/dble(N)
-    ! if (splitbead.gt.1) then
-    !    tcfval(1)=0.0d0
-    !    do i=1, n-splitbead,splitbead
-    !       s=1.0d0
-    !       do j=0, splitbead-1
-    !          s=s*x(i+splitbead,1,1)
-    !       end do
-    !       tcfval(1)=tcfval(1) + s/dble(N)
-    !    end do
-    ! else
-    !    do i=1,nestim
-    !       tcfval(i)= centroid(x(:,1,1)**3)
-    !    end do
-    ! end if
+       tcfval(:)=tcfval(:)/dble(N)
 
     return
   end subroutine estimator
@@ -78,14 +59,15 @@ contains
   !function for initializing a path
   subroutine init_path(x, p, factors,weight)
     double precision, intent(inout):: x(:,:,:), p(:,:,:),weight,factors(:)
-    double precision, allocatable:: tempx(:),rk(:,:),rp(:), grad(:,:,:), centroidx(:,:)
+    double precision, allocatable:: tempx(:),pk(:),rk(:,:),rp(:), grad(:,:,:), centroidx(:,:)
     double precision::              stdev, potvals, ringpot, potdiff
     double precision::              prob, stdevharm, energy, totp
     integer::                       i,j,k, idof, imin(1)
 
-    allocate(rp(n),tempx(ndof))
+    allocate(rp(n),tempx(ndof), pk(n))
     allocate(rk(n,ndof))
     stdev= 1.0d0/sqrt(betan)
+    stdevharm= 1.0d0/sqrt(beta)
     x(:,:,:)= 0.0d0
     p(:,:,:)= 0.0d0
 
@@ -101,6 +83,7 @@ contains
              do k=1, n
                 if (k.eq. 1) then
                    rp(k)= 0.0d0
+                   pk(k)=0.0d0
                 else
                    rp(k)= rp(k)/lam(k)
                 end if
@@ -110,11 +93,14 @@ contains
              if (ring) then
                 if (use_fft) then
                    call ring_transform_backward_nr(rp, rk(:,idof))
+                   call ring_transform_backward_nr(pk, p(:,i,j))
                 else
                    call ring_transform_backward(rp, rk(:,idof))
+                   call ring_transform_backward(pk, p(:,i,j))
                 end if
              else
                 call linear_transform_backward(rp, rk(:,idof), idof)
+                call linear_transform_backward(pk, p(:,i,j), idof)
              end if
           else
              rk(1,idof)=0.0d0
@@ -125,7 +111,6 @@ contains
     end do
     !---------------------------
     !transform to global cartesian coordinates
-    stdevharm= 1.0d0/sqrt(beta)
     errcode_normal = vdrnggaussian(rmethod_normal,stream_normal,ndof,tempx,0.0d0,stdevharm)
     tempx(:)= tempx(:)/sqrt(transfreqs(:))!needs mass scaling, transfreqs are actual freqs
     potvals=0.0d0
@@ -166,7 +151,7 @@ contains
     weight= exp(-beta*potdiff)
     !work out initial current
     call estimator(x,p,factors)
-    deallocate(tempx, rp, rk)
+    deallocate(tempx, rp, rk, pk)
     return
   end subroutine init_path
 

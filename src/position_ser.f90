@@ -14,10 +14,10 @@ program rpmd
   integer::                        i1,i2,j1,j2,idof1,idof2
   integer::                        idof,ii
   integer::                        time1, time2,irate, imax
-  double precision::               answer,sigmaA, weight, massin, averagex
+  double precision::               answer,sigmaA, weight, massin
   double precision::               totalweight,s, ringpot, norm, T, Tleft, Tright
   double precision, allocatable::  x(:,:,:), p(:,:,:), totaltcf(:,:)
-  double precision, allocatable::  v(:,:),p0(:,:,:),q0(:,:,:),tcf0(:)
+  double precision, allocatable::  v(:,:),p0(:,:,:),q0(:,:,:),tcf0(:),averagex(:)
   !lapack variables
   character::                      jobz, range, uplo
   double precision::               vl, vu, abstol
@@ -94,6 +94,8 @@ program rpmd
   allocate(hess(ndof,ndof), transfreqs(ndof))
   call findhess(transition, hess)
   call findnormal(hess, transfreqs,normalvec)
+  write(*,*) "Freqs:", transfreqs
+  write(*,*) "Normals:", normalvec
   V0= pot(transition)
   write(*,*) "Energy zero=", V0
   !-------------------------
@@ -105,19 +107,21 @@ program rpmd
   call init_estimators() !allocates estimator stuff
 
   allocate(x(n,ndim,natom),p(n,ndim,natom))
-  allocate(totaltcf(nestim,ntime), tcf(nestim,ntime), tcf0(nestim))
+  allocate(totaltcf(nestim,ntime), tcf(nestim,ntime), tcf0(nestim), averagex(nestim))
   totaltcf(:,:)=0.0d0
   totalweight=0.0d0
   averagex=0.0d0
 
   !--------------------
   !Main loop
+  ! open(90,file="sampling.dat")
   do ii=1, nrep
      tcf(:,:)=0.0d0
      call init_path(x,p, tcf0, weight)
      totalweight=totalweight + weight
-     averagex= averagex+ weight*tcf0(1)**2
-     if (iprint .and. mod(ii,Noutput) .eq. 0 ) write(*,*) ii,tcf0(1), weight, totalweight/dble(ii), averagex/dble(ii)
+     averagex(:)= averagex(:)+ weight*tcf0(:)**2
+     ! if (iprint .and. mod(ii,Noutput) .eq. 0 ) write(90,*) x
+     if (iprint .and. mod(ii,Noutput) .eq. 0 ) write(*,*) ii,centroid(p(:,1,1)), weight, totalweight/dble(ii), averagex/dble(ii)
      call propagator(x,p,tcf)
      do i=1, nestim
         do j=1,ntime
@@ -125,15 +129,16 @@ program rpmd
         end do
      end do
   end do
-
+  ! close(90)
   !------------------------------------
   !Finalize and write out
   write(*,*) "Zero time::", averagex/totalweight
   write(*,*) "Totalweight:", totalweight/dble(nrep)
-  totaltcf(:,:)= totaltcf(:,:)/totalweight
-  ! totaltcf(:,:)= totalweight*totaltcf(:,:)/dble(nrep)**2
+  totaltcf(:,:)= totaltcf(:,:)/totalweight !/dble(nrep)!
+
   if (outputtcf) then
      open(100, file="timecorrelation.dat")
+     write(100,*) 0.0d0, (averagex(j)/totalweight,j=1,nestim)
      do i=1, ntime
         write(100,*) dt*dble(i), (totaltcf(j,i),j=1,nestim)
      end do
