@@ -14,7 +14,7 @@ program rpmd
   integer::                        i1,i2,j1,j2,idof1,idof2
   integer::                        idof,ii
   integer::                        time1, time2,irate, imax
-  double precision::               answer,sigmaA, weight, massin
+  double precision::               answer,sigmaA, weight, massin,Z
   double precision::               totalweight,s, ringpot, norm, T, Tleft, Tright
   double precision, allocatable::  x(:,:,:), p(:,:,:), totaltcf(:,:)
   double precision, allocatable::  v(:,:),p0(:,:,:),q0(:,:,:),tcf0(:),averagex(:)
@@ -22,11 +22,9 @@ program rpmd
   character::                      jobz, range, uplo
   double precision::               vl, vu, abstol
   integer::                        nout, ldz, lwork, liwork, info
-  integer,allocatable::            isuppz(:), iwork(:)
-  double precision, allocatable::  work(:), z(:,:)
   namelist /MCDATA/ n, beta, NMC, noutput,dt, iprint,imin,tau,&
        nrep, use_fft, thermostat, ndim, natom, xunit,gamma, &
-       outputtcf, splitbead
+       outputtcf
 
   !-------------------------
   !Set default system parameters then read in namelist
@@ -48,7 +46,6 @@ program rpmd
   ring=.true.
   fixedends=.false.
   outputtcf=.true.
-  splitbead=3
 
   read(5, nml=MCDATA)
   betan= beta/dble(n)
@@ -65,6 +62,8 @@ program rpmd
      write(*,*) "tau=", tau
      write(*,*) "gamma=", gamma
      write(*,*) "Running with Langevin thermostat"
+  else if (thermostat .eq. 3) then
+     write(*,*) "Running with Matsubara propagator"
   end if
   ! if (mod(splitbead,n).ne.0) then
   !    write(*,*) "Wrong number of beads for splitting scheme specified:",splitbead, mod(splitbead,n)
@@ -110,7 +109,12 @@ program rpmd
   allocate(totaltcf(nestim,ntime), tcf(nestim,ntime), tcf0(nestim), averagex(nestim))
   totaltcf(:,:)=0.0d0
   totalweight=0.0d0
-  averagex=0.0d0
+  averagex(:)=0.0d0
+
+  Z=0.0d0
+  do i=1,ndof
+     Z=Z+0.5d0/sinh(0.5d0*sqrt(transfreqs(i))*beta)
+  end do
 
   !--------------------
   !Main loop
@@ -118,10 +122,14 @@ program rpmd
   do ii=1, nrep
      tcf(:,:)=0.0d0
      call init_path(x,p, tcf0, weight)
+     ! write(*,*) ii,x, tcf0
      totalweight=totalweight + weight
-     averagex(:)= averagex(:)+ weight*tcf0(:)**2
+     do i=1,nestim
+        averagex(i)= averagex(i)+ weight*tcf0(i)**2
+     end do
+     ! write(*,*)ii,weight, tcf0
      ! if (iprint .and. mod(ii,Noutput) .eq. 0 ) write(90,*) x
-     if (iprint .and. mod(ii,Noutput) .eq. 0 ) write(*,*) ii,centroid(p(:,1,1)), weight, totalweight/dble(ii), averagex/dble(ii)
+     if (iprint .and. mod(ii,Noutput) .eq. 0 ) write(*,*) ii,centroid(p(:,1,1)), weight, totalweight/dble(ii), averagex/totalweight
      call propagator(x,p,tcf)
      do i=1, nestim
         do j=1,ntime
@@ -133,6 +141,7 @@ program rpmd
   !------------------------------------
   !Finalize and write out
   write(*,*) "Zero time::", averagex/totalweight
+  write(*,*) "Harmonic partition:", Z
   write(*,*) "Totalweight:", totalweight/dble(nrep)
   totaltcf(:,:)= totaltcf(:,:)/totalweight !/dble(nrep)!
 

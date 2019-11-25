@@ -24,20 +24,23 @@ contains
   !-----------------------------------------------------
   !-----------------------------------------------------
   !main function for propagating a MD trajectory with Andersen thermostat
-  subroutine propagator(xprop,vprop,tcf,a,b,dbdl)
+  subroutine propagator(xprop,pprop,tcf,a,b,dbdl)
     implicit none
-    double precision, intent(inout)::  xprop(:,:,:), vprop(:,:,:)
+    double precision, intent(inout)::  xprop(:,:,:), pprop(:,:,:)
     double precision, intent(out):: tcf(:,:)
     double precision::              sigma
-    double precision, allocatable:: pprop(:), tempp(:), tempv(:)
-    integer::              dofi, i,j,k,l,count
+    double precision, allocatable:: tempp(:), tempv(:), ximag(:,:,:), pimag(:,:,:)
+    double precision, allocatable:: modx(:,:,:), modp(:,:,:)
+    integer::              dofi, ii,i,j,k,l,count
     integer (kind=4)::     rkick(1)
     double precision, intent(in), optional::  dbdl(:,:),a(:,:),b(:,:)
 
     !----------------------------------------
     !Initialize  and allocate
-    allocate(pprop(n), tempp(n),tempv(n))
+    allocate(tempp(n),tempv(n))
 
+    if (thermostat .eq. 3) &
+         allocate(ximag(n,ndim,natom),pimag(n,ndim,natom),modx(n,ndim,natom),modp(n,ndim,natom))
     count=0
     tcf(:,:)=0.0d0
     if (thermostat .eq. 1) then
@@ -51,8 +54,10 @@ contains
           end do
        end do
     end if
+    ximag(:,:,:)=0.0d0
+    pimag(:,:,:)=0.0d0
 
-    do i=1, NMC, 1
+    do ii=1, NMC, 1
        !----------------------------------------
        !Deal with thermostats
        if (thermostat.eq.1) then !andersen thermostat
@@ -64,9 +69,9 @@ contains
                 do k=1,natom
                    dofi=calcidof(j,k)
                    sigma=sqrt(1.0d0/betan)
-                   errcode_normal = vdrnggaussian(rmethod_normal,stream_normal,n,pprop,0.0d0,sigma)
+                   errcode_normal = vdrnggaussian(rmethod_normal,stream_normal,n,tempp,0.0d0,sigma)
                    do l=1,n
-                      tempp(l)= pprop(l)*sqrt(beadmass(k,l))
+                      tempp(l)= tempp(l)*sqrt(beadmass(k,l))
                    end do
                    if (.not. use_fft) then
                       if (ring) then
@@ -82,7 +87,7 @@ contains
                       end if
                    end if
                    do l=1,n
-                      vprop(l, j, k) = tempv(l)
+                      pprop(l, j, k) = tempv(l)
                    end do
                 end do
              end do
@@ -94,19 +99,22 @@ contains
        !----------------------------------------
        !Take a step
        if (thermostat .eq. 2) then !langevin thermostat
-          call time_step_ffpile(xprop, vprop)
-       else
-          call time_step(xprop, vprop) !no thermostat
+          call time_step_ffpile(xprop, pprop)
+       else if (thermostat .eq.0) then
+          call time_step(xprop, pprop) !no thermostat
+       else if (thermostat .eq.3) then
+          call time_step_matsubara(xprop,pprop,ximag,pimag)
        end if
        !----------------------------------------
        !Calculate the estimator for this step
        if (i .gt. imin) then
-          call estimator(xprop, vprop, tcf(:,i))
+             call estimator(xprop, pprop, tcf(:,ii))
        end if
-       call pot_thermostat(xprop,vprop)
+       call pot_thermostat(xprop,pprop)
     end do
-    deallocate(pprop, tempv, tempp)
+    deallocate(tempv, tempp)
     if (thermostat .eq. 2) deallocate(c1,c2)
+    if (thermostat .eq. 3) deallocate(ximag,pimag, modx,modp)
     !TODO: add estimator_finalize
     return
   end subroutine propagator
@@ -115,24 +123,48 @@ contains
   !-----------------------------------------------------
   !routine taking a step in time using normal mode verlet algorithm
   !from ceriotti et al 2010 paper.
-  subroutine time_step(xprop, vprop)
+  subroutine time_step(xprop, pprop)
     implicit none
-    double precision, intent(inout)::    xprop(:,:,:), vprop(:,:,:)
+    double precision, intent(inout)::    xprop(:,:,:), pprop(:,:,:)
     double precision, allocatable::  force(:,:,:), pip(:,:,:)
 
     allocate(force(n, ndim, natom), pip(n, ndim, natom))
     force(:,:,:)=0.0d0
     if (n .gt. 1) then
-       call step_v(dt, xprop, vprop, force, .true.)
-       call step_nm(dt,xprop,vprop ,.true.)
+       call step_v(dt, xprop, pprop, force, .true.)
+       call step_nm(dt,xprop,pprop ,.true.)
     else
-       call step_v(0.5d0*dt, xprop, vprop, force, .true.)
-       call step_classical(dt, xprop, vprop)
-       call step_v(0.5d0*dt, xprop, vprop, force, .true.)
+       call step_v(0.5d0*dt, xprop, pprop, force, .true.)
+       call step_classical(dt, xprop, pprop)
+       call step_v(0.5d0*dt, xprop, pprop, force, .true.)
     end if
     deallocate(force)
     return
   end subroutine time_step
+  !-----------------------------------------------------
+  !-----------------------------------------------------
+  !routine taking a step in time using normal mode verlet algorithm
+  !from ceriotti et al 2010 paper.
+  subroutine time_step_matsubara(xprop, pprop,ximag,pimag)
+    implicit none
+    double precision, intent(inout)::    xprop(:,:,:), pprop(:,:,:),ximag(:,:,:), pimag(:,:,:)
+    double precision, allocatable::  force(:,:,:), pip(:,:,:)
+
+    allocate(force(n, ndim, natom), pip(n, ndim, natom))
+    force(:,:,:)=0.0d0
+    if (n .gt. 1) then
+       call step_matsubara(0.5d0*dt, xprop,pprop,ximag,pimag)
+       call step_v(dt, xprop, pprop, force, .true.)
+       call step_nm(dt,xprop,pprop ,.true.)
+       call step_matsubara(0.5d0*dt, xprop,pprop,ximag,pimag)
+    else
+       call step_v(0.5d0*dt, xprop, pprop, force, .true.)
+       call step_classical(dt, xprop, pprop)
+       call step_v(0.5d0*dt, xprop, pprop, force, .true.)
+    end if
+    deallocate(force)
+    return
+  end subroutine time_step_matsubara
   !-----------------------------------------------------
   !-----------------------------------------------------
   !initialize normal mode routines
@@ -215,16 +247,16 @@ contains
   !-----------------------------------------------------
   !routine taking a step in time using normal mode verlet algorithm
   !from ceriotti et al 2010 paper.
-  subroutine time_step_ffpile(xprop, vprop)
+  subroutine time_step_ffpile(xprop, pprop)
     implicit none
-    double precision, intent(inout)::    xprop(:,:,:), vprop(:,:,:)
+    double precision, intent(inout)::    xprop(:,:,:), pprop(:,:,:)
     double precision, allocatable::  force(:,:,:), pip(:,:,:)
 
     allocate(force(n, ndim, natom), pip(n, ndim, natom))
-    call step_v(0.5d0*dt, xprop, vprop, force, .true.)
-    call step_langevin(vprop)
-    call step_v(0.5d0*dt, xprop, vprop, force,.false.)
-    call step_nm(dt,xprop,vprop ,.true.)
+    call step_v(0.5d0*dt, xprop, pprop, force, .true.)
+    call step_langevin(pprop)
+    call step_v(0.5d0*dt, xprop, pprop, force,.false.)
+    call step_nm(dt,xprop,pprop ,.true.)
     deallocate(force, pip)
     return
   end subroutine time_step_ffpile
@@ -341,6 +373,99 @@ contains
   !-----------------------------------------------------
   !-----------------------------------------------------
 
+  subroutine step_matsubara(time,x,p,ximag,pimag)
+    implicit none
+    double precision, intent(in)::  time
+    double precision, intent(inout):: p(:,:,:), x(:,:,:),pimag(:,:,:), ximag(:,:,:)
+    double precision, allocatable:: pir(:,:,:), qr(:,:,:),pii(:,:,:), qi(:,:,:)
+    double precision:: prold,piold,qrold,qiold, omegak
+    integer::         i,j,k, dofi
+
+    allocate(pir(n,ndim,natom),pii(n,ndim,natom),qr(n,ndim,natom),qi(n,ndim,natom))
+
+    do i=1,ndim
+       do j=1,natom
+          dofi= (j-1)*ndim+i
+          if (.not. use_fft) then
+             if (ring) then
+                call ring_transform_forward(p(:,i,j), pir(:,i,j))
+                call ring_transform_forward(x(:,i,j), qr(:,i,j))
+                call ring_transform_forward(pimag(:,i,j), pii(:,i,j))
+                call ring_transform_forward(ximag(:,i,j), qi(:,i,j))
+             else
+                call linear_transform_forward(p(:,i,j), pir(:,i,j), 0)
+                call linear_transform_forward(x(:,i,j), qr(:,i,j), dofi)
+                call linear_transform_forward(pimag(:,i,j), pii(:,i,j), 0)
+                call linear_transform_forward(ximag(:,i,j), qi(:,i,j), dofi)
+             end if
+          else
+             if (ring) then
+                call ring_transform_forward_nr(p(:,i,j), pir(:,i,j))
+                call ring_transform_forward_nr(x(:,i,j), qr(:,i,j))
+                call ring_transform_forward_nr(pimag(:,i,j), pii(:,i,j))
+                call ring_transform_forward_nr(ximag(:,i,j), qi(:,i,j))
+             else
+                call linear_transform_forward_nr(p(:,i,j), pir(:,i,j), 0)
+                call linear_transform_forward_nr(x(:,i,j), qr(:,i,j), dofi)
+                call linear_transform_forward_nr(pimag(:,i,j), pii(:,i,j), 0)
+                call linear_transform_forward_nr(ximag(:,i,j), qi(:,i,j), dofi)
+             end if
+          end if
+       end do
+    end do
+
+    do i=1,n
+       do j=1,ndim
+          do k=1,natom
+             prold=pir(i,j,k)
+             piold=pii(i,j,k)
+             qrold= qr(i,j,k)
+             qiold= qi(i,j,k)
+             pir(i,j,k) = prold - lam(i)*piold*time
+             pii(i,j,k)= piold + lam(i)*prold*time
+             qr(i,j,k) = qrold - lam(i)*qiold*time
+             qi(i,j,k)= qiold + lam(i)*qrold*time
+          end do
+       end do
+    end do
+    
+    do i=1,ndim
+       do j=1,natom
+          dofi= (j-1)*ndim+i
+          if (.not. use_fft) then
+             if (ring) then
+                call ring_transform_backward(pir(:,i,j),p(:,i,j))
+                call ring_transform_backward( qr(:,i,j),x(:,i,j))
+                call ring_transform_backward(pii(:,i,j),pimag(:,i,j))
+                call ring_transform_backward( qi(:,i,j),ximag(:,i,j))
+             else
+                call linear_transform_backward(pir(:,i,j), p(:,i,j), 0)
+                call linear_transform_backward(qr(:,i,j), x(:,i,j), dofi)
+                call linear_transform_backward(pii(:,i,j), pimag(:,i,j), 0)
+                call linear_transform_backward(qi(:,i,j), ximag(:,i,j), dofi)
+             end if
+          else
+             if (ring) then
+                call ring_transform_backward_nr(pir(:,i,j), p(:,i,j))
+                call ring_transform_backward_nr(qr(:,i,j), x(:,i,j))
+                call ring_transform_backward_nr(pii(:,i,j), pimag(:,i,j))
+                call ring_transform_backward_nr(qi(:,i,j), ximag(:,i,j))
+             else
+                call linear_transform_backward_nr(pir(:,i,j), p(:,i,j), 0)
+                call linear_transform_backward_nr(qr(:,i,j), x(:,i,j), dofi)
+                call linear_transform_backward_nr(pii(:,i,j), pimag(:,i,j), 0)
+                call linear_transform_backward_nr(qi(:,i,j), ximag(:,i,j), dofi)
+             end if
+          end if
+       end do
+    end do
+
+
+    return
+  end subroutine step_matsubara
+  !-----------------------------------------------------
+  !-----------------------------------------------------
+
   subroutine step_classical(time,x,p)
     implicit none
     double precision, intent(in)::  time
@@ -363,40 +488,40 @@ contains
   !-----------------------------------------------------
   !-----------------------------------------------------
 
-  subroutine step_langevin(vprop)
+  subroutine step_langevin(pprop)
     implicit none
-    double precision, intent(inout):: vprop(:,:,:)
-    double precision, allocatable:: p(:,:,:), pprop(:)
+    double precision, intent(inout):: pprop(:,:,:)
+    double precision, allocatable:: p(:,:,:), pk(:)
     integer:: i,j,k, dofi
 
-    allocate(p(n,ndim,natom), pprop(n*ndof))
-    errcode_normal = vdrnggaussian(rmethod_normal,stream_normal,n*ndof,pprop,0.0d0,1.0d0)
+    allocate(p(n,ndim,natom), pk(n*ndof))
+    errcode_normal = vdrnggaussian(rmethod_normal,stream_normal,n*ndof,pk,0.0d0,1.0d0)
     do i=1,ndim
        do j=1,natom
           dofi= calcidof(i,j)
           if (.not. use_fft) then
              if (ring) then
-                call ring_transform_forward(vprop(:,i,j), p(:,i,j))
+                call ring_transform_forward(pprop(:,i,j), p(:,i,j))
              else
-                call linear_transform_forward(vprop(:,i,j), p(:,i,j), 0)
+                call linear_transform_forward(pprop(:,i,j), p(:,i,j), 0)
              end if
           else
              if (ring) then
-                call ring_transform_forward_nr(vprop(:,i,j), p(:,i,j))
+                call ring_transform_forward_nr(pprop(:,i,j), p(:,i,j))
              else
-                call linear_transform_forward_nr(vprop(:,i,j), p(:,i,j), 0)
+                call linear_transform_forward_nr(pprop(:,i,j), p(:,i,j), 0)
              end if
           end if
           do k=1,n
-             vprop(k,i,j)= p(k,i,j) !seems silly, but it isn't!
+             pprop(k,i,j)= p(k,i,j) !seems silly, but it isn't!
              p(k,i,j)= (c1(j,k)**2)*p(k,i,j) + &
-                  sqrt(beadmass(j,k)/betan)*c2(j,k)*sqrt(1.0+c1(j,k)**2)*pprop((dofi-1)*n +k)
+                  sqrt(beadmass(j,k)/betan)*c2(j,k)*sqrt(1.0+c1(j,k)**2)*pk((dofi-1)*n +k)
           end do
        end do
     end do
     do k=1,n
        do j=1,natom
-          p(k,:,j)= norm2(p(k,:,j))*vprop(k,:,j)/norm2(vprop(k,:,j)) !see, not so silly!
+          p(k,:,j)= norm2(p(k,:,j))*pprop(k,:,j)/norm2(pprop(k,:,j)) !see, not so silly!
        end do
     end do
     do i=1,ndim
@@ -404,20 +529,20 @@ contains
           dofi= calcidof(i,j)
           if (.not. use_fft) then
              if (ring) then
-                call ring_transform_backward(p(:,i,j),vprop(:,i,j))
+                call ring_transform_backward(p(:,i,j),pprop(:,i,j))
              else
-                call linear_transform_backward(p(:,i,j),vprop(:,i,j), 0)
+                call linear_transform_backward(p(:,i,j),pprop(:,i,j), 0)
              end if
           else
              if (ring) then
-                call ring_transform_backward_nr(p(:,i,j),vprop(:,i,j))
+                call ring_transform_backward_nr(p(:,i,j),pprop(:,i,j))
              else
-                call linear_transform_backward_nr(p(:,i,j),vprop(:,i,j), 0)
+                call linear_transform_backward_nr(p(:,i,j),pprop(:,i,j), 0)
              end if
           end if
        end do
     end do
-    deallocate(p,pprop)
+    deallocate(p,pk)
   end subroutine step_langevin
 
   !-----------------------------------------------------

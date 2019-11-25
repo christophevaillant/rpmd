@@ -10,7 +10,7 @@ contains
     integer, intent(in):: iproc
     namelist /POTDATA/ omega
 
-    omega=2.0
+    omega=1.0
 
     if (iproc.eq.0) read(5, nml=POTDATA)
 
