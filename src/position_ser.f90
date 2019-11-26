@@ -147,7 +147,6 @@ program rpmd
 
   if (outputtcf) then
      open(100, file="timecorrelation.dat")
-     write(100,*) 0.0d0, (averagex(j)/totalweight,j=1,nestim)
      do i=1, ntime
         write(100,*) dt*dble(i), (totaltcf(j,i),j=1,nestim)
      end do

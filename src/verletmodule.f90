@@ -30,7 +30,7 @@ contains
     double precision, intent(out):: tcf(:,:)
     double precision::              sigma
     double precision, allocatable:: tempp(:), tempv(:), ximag(:,:,:), pimag(:,:,:)
-    double precision, allocatable:: modx(:,:,:), modp(:,:,:)
+    double precision, allocatable:: modx(:,:,:), modp(:,:,:), xabs(:,:,:), pabs(:,:,:)
     integer::              dofi, ii,i,j,k,l,count
     integer (kind=4)::     rkick(1)
     double precision, intent(in), optional::  dbdl(:,:),a(:,:),b(:,:)
@@ -39,8 +39,10 @@ contains
     !Initialize  and allocate
     allocate(tempp(n),tempv(n))
 
-    if (thermostat .eq. 3) &
-         allocate(ximag(n,ndim,natom),pimag(n,ndim,natom),modx(n,ndim,natom),modp(n,ndim,natom))
+    if (thermostat .eq. 3) then
+       allocate(ximag(n,ndim,natom),pimag(n,ndim,natom),modx(n,ndim,natom),modp(n,ndim,natom))
+       allocate(xabs(n,ndim,natom), pabs(n,ndim,natom))
+    end if
     count=0
     tcf(:,:)=0.0d0
     if (thermostat .eq. 1) then
@@ -114,7 +116,7 @@ contains
     end do
     deallocate(tempv, tempp)
     if (thermostat .eq. 2) deallocate(c1,c2)
-    if (thermostat .eq. 3) deallocate(ximag,pimag, modx,modp)
+    if (thermostat .eq. 3) deallocate(ximag,pimag, modx,modp, xabs, pabs)
     !TODO: add estimator_finalize
     return
   end subroutine propagator
@@ -153,10 +155,8 @@ contains
     allocate(force(n, ndim, natom), pip(n, ndim, natom))
     force(:,:,:)=0.0d0
     if (n .gt. 1) then
-       call step_matsubara(0.5d0*dt, xprop,pprop,ximag,pimag)
        call step_v(dt, xprop, pprop, force, .true.)
-       call step_nm(dt,xprop,pprop ,.true.)
-       call step_matsubara(0.5d0*dt, xprop,pprop,ximag,pimag)
+       call step_nm_matsubara(dt,xprop,pprop,ximag,pimag ,.true.)
     else
        call step_v(0.5d0*dt, xprop, pprop, force, .true.)
        call step_classical(dt, xprop, pprop)
@@ -348,6 +348,129 @@ contains
   end subroutine step_nm
   !-----------------------------------------------------
   !-----------------------------------------------------
+  !Normal mode steps for Matsubara modes
+  subroutine step_nm_matsubara(time, x, p,ximag,pimag, transform)
+    implicit none
+    integer::          i, j, k, dofi
+    double precision:: omegak, omegaplus,omegaminus
+    double precision:: newpir(n, ndim, natom),qr(n, ndim, natom), pir(n, ndim, natom)
+    double precision:: newpii(n, ndim, natom),qi(n, ndim, natom), pii(n, ndim, natom)
+    double precision:: x(:,:,:), p(:,:,:),ximag(:,:,:), pimag(:,:,:), time
+    double precision:: sinplus, sinminus, cosplus, cosminus
+    logical::          transform
+
+    do i=1,ndim
+       do j=1,natom
+          dofi= (j-1)*ndim+i
+          if (.not. use_fft) then
+             if (ring) then
+                call ring_transform_forward(p(:,i,j), pir(:,i,j))
+                call ring_transform_forward(x(:,i,j), qr(:,i,j))
+                call ring_transform_forward(pimag(:,i,j), pii(:,i,j))
+                call ring_transform_forward(ximag(:,i,j), qi(:,i,j))
+             else
+                call linear_transform_forward(p(:,i,j), pir(:,i,j), 0)
+                call linear_transform_forward(x(:,i,j), qr(:,i,j), dofi)
+                call linear_transform_forward(pimag(:,i,j), pii(:,i,j), 0)
+                call linear_transform_forward(ximag(:,i,j), qi(:,i,j), dofi)
+             end if
+          else
+             if (ring) then
+                call ring_transform_forward_nr(p(:,i,j), pir(:,i,j))
+                call ring_transform_forward_nr(x(:,i,j), qr(:,i,j))
+                call ring_transform_forward_nr(pimag(:,i,j), pii(:,i,j))
+                call ring_transform_forward_nr(ximag(:,i,j), qi(:,i,j))
+             else
+                call linear_transform_forward_nr(p(:,i,j), pir(:,i,j), 0)
+                call linear_transform_forward_nr(x(:,i,j), qr(:,i,j), dofi)
+                call linear_transform_forward_nr(pimag(:,i,j), pii(:,i,j), 0)
+                call linear_transform_forward_nr(ximag(:,i,j), qi(:,i,j), dofi)
+             end if
+          end if
+       end do
+    end do
+    do i=1, n
+       do j=1,ndim
+          do k=1,natom
+             if (i.eq.1 .and. ring) then
+                newpir(i,j,k)=pir(i,j,k)
+                qr(i,j,k)= qr(i,j,k) + &
+                     pir(i,j,k)*time/beadmass(k,i)
+             else
+                omegak= sqrt(mass(k)/beadmass(k,i))*lam(i)
+                omegaplus= 0.5d0*omegak*(1.0d0+sqrt(5.0d0))
+                omegaminus= 0.5d0*omegak*(1.0d0-sqrt(5.0d0))
+                cosplus= cos(omegaplus*time) + cos(omegaminus*time)
+                cosminus= cos(omegaplus*time) - cos(omegaminus*time)
+                sinplus= sin(omegaplus*time) + sin(omegaminus*time)
+                sinminus= sin(omegaplus*time) - sin(omegaminus*time)
+                newpir(i,j,k)= 0.5d0*(pir(i,j,k)*(1.0d0-sqrt(5.0d0))*cosplus &
+                     + 2.0d0*beadmass(k,i)*omegak*qr(i,j,k)*sinminus &
+                     + pii(i,j,k)*(1.0d0-sqrt(5.0d0))*sinplus &
+                     - 2.0d0*beadmass(k,i)*omegak*qi(i,j,k)*cosminus)/sqrt(5.0d0)
+                newpii(i,j,k)= 0.5d0*(-pir(i,j,k)*(1.0d0-sqrt(5.0d0))*sinplus &
+                     + 2.0d0*beadmass(k,i)*omegak*qr(i,j,k)*cosminus &
+                     + pii(i,j,k)*(1.0d0-sqrt(5.0d0))*cosplus &
+                     + 2.0d0*beadmass(k,i)*omegak*qi(i,j,k)*sinminus)/sqrt(5.0d0)
+                qr(i,j,k)= 0.5d0*(qr(i,j,k)*(1.0d0 + sqrt(5.0d0))*cosminus &
+                     + 2.0d0*pir(i,j,k)*sinplus/(beadmass(k,i)*omegak) &
+                     - 2.0d0*pii(i,j,k)*cosplus/(beadmass(k,i)*omegak) &
+                     + qi(i,j,k)*(1.0d0+sqrt(5.0d0))*sinminus)/sqrt(5.0d0)
+                qi(i,j,k)= 0.5d0*(pir(i,j,k)*cosplus/(beadmass(k,i)*omegak) &
+                     - qr(i,j,k)*(1.0d0+sqrt(5.0d0))*sinminus &
+                     + qi(i,j,k)*(1.0d0+sqrt(5.0d0))*cosminus &
+                     + 2.0d0*pii(i,j,k)*sinplus/(beadmass(k,i)*omegak))/sqrt(5.0d0)
+             end if
+             if (newpir(i,j,k) .ne. newpir(i,j,k)) then
+                write(*,*) "NaN in 1st NM propagation"
+                stop
+             end if
+          end do
+       end do
+    end do
+
+    if (transform) then
+       do i=1,ndim
+          do j=1,natom
+             dofi=calcidof(i,j)
+             if (.not. use_fft) then
+                if (ring) then
+                   call ring_transform_backward(newpir(:,i,j), p(:,i,j))
+                   call ring_transform_backward(qr(:,i,j), x(:,i,j))
+                   call ring_transform_backward(newpii(:,i,j), pimag(:,i,j))
+                   call ring_transform_backward(qi(:,i,j), ximag(:,i,j))
+                else
+                   call linear_transform_backward(newpir(:,i,j), p(:,i,j), 0)
+                   call linear_transform_backward(qr(:,i,j), x(:,i,j),dofi)
+                   call linear_transform_backward(newpii(:,i,j), pimag(:,i,j), 0)
+                   call linear_transform_backward(qi(:,i,j), ximag(:,i,j),dofi)
+                end if
+             else
+                if (ring) then
+                   call ring_transform_backward_nr(newpir(:,i,j), p(:,i,j))
+                   call ring_transform_backward_nr(qr(:,i,j), x(:,i,j))
+                   call ring_transform_backward_nr(newpii(:,i,j), pimag(:,i,j))
+                   call ring_transform_backward_nr(qi(:,i,j), ximag(:,i,j))
+                else
+                   call linear_transform_backward_nr(newpir(:,i,j), p(:,i,j),0)
+                   call linear_transform_backward_nr(qr(:,i,j), x(:,i,j),dofi)
+                   call linear_transform_backward_nr(newpii(:,i,j), pimag(:,i,j),0)
+                   call linear_transform_backward_nr(qi(:,i,j), ximag(:,i,j),dofi)
+                end if
+             end if
+          end do
+       end do
+    else
+       x(:,:,:)= qr(:,:,:)
+       p(:,:,:)= newpir(:,:,:)
+       ximag(:,:,:)= qi(:,:,:)
+       pimag(:,:,:)= newpii(:,:,:)
+    end if
+
+
+  end subroutine step_nm_matsubara
+  !-----------------------------------------------------
+  !-----------------------------------------------------
 
   subroutine step_v(time,x,p, force, recalculate)
     implicit none
@@ -373,6 +496,7 @@ contains
   !-----------------------------------------------------
   !-----------------------------------------------------
 
+  !TODO: Obsolete routine for approximate propagation of matsubara mode, delete.
   subroutine step_matsubara(time,x,p,ximag,pimag)
     implicit none
     double precision, intent(in)::  time
