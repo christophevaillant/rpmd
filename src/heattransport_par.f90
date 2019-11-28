@@ -139,6 +139,7 @@ program rpmd
 
      call findhess(transition, hess)
      call findnormal(hess, transfreqs,normalvec)
+     write(*,*) "Harmonic frequencies:",transfreqs
   end if
 
   !-------------------------------------

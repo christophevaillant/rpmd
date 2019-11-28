@@ -132,7 +132,7 @@ program rpmd
      call init_path(x,p, tcf0, weight)
      totalweight=totalweight + weight
      averagex= averagex+ weight*tcf0(1)**2
-     if (iprint) write(*,*) ii,tcf0(1), weight, totalweight/dble(ii), averagex/dble(ii)
+     if (iprint) write(*,*) ii,tcf0(1), weight, totalweight/dble(ii), averagex/totalweight
      call propagator(x,p,tcf)
      do i=1, nestim
         do j=1,ntime
@@ -143,9 +143,8 @@ program rpmd
 
   !------------------------------------
   !Finalize and write out
-  norm= normalization()
-  write(*,*) "Average factor:", averagex/dble(nrep)
-  write(*,*) "Normalization, totalweight:", norm, totalweight/dble(nrep)
+  write(*,*) "Average factor:", averagex/totalweight
+  write(*,*) "Totalweight:", totalweight/dble(nrep)
   totaltcf(:,:)= totaltcf(:,:)/totalweight
   ! totaltcf(:,:)= totalweight*totaltcf(:,:)/dble(nrep)**2
   if (outputtcf) then

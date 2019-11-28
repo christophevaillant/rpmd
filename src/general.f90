@@ -22,6 +22,8 @@
     double precision, parameter::    pi=3.14159265358979d0
     double precision::               beta, betan, UMtilde, omegan, dt
     double precision, allocatable::  well1(:,:), well2(:,:), mass(:)
+    double precision, allocatable:: transition(:,:), normalvec(:,:), transfreqs(:), hess(:,:)
+
     character, allocatable::         label(:)
     logical::                        fixedends, outputtcf, outputfbar
 
@@ -240,4 +242,66 @@
       return
     end function centroid
 
+
+    subroutine harmonicsampling(x,p, potvals)
+      implicit none
+      double precision, intent(inout):: x(:,:,:), p(:,:,:)
+      double precision, intent(out):: potvals
+      double precision,allocatable:: rp(:), tempx(:), pk(:), rk(:,:)
+      double precision:: lambda, stdev
+      integer:: i,j,k, idof
+
+      allocate(rp(n),tempx(totdof), pk(n))
+      allocate(rk(n,ndof))
+      stdev= 1.0d0/sqrt(betan)
+      x(:,:,:)= 0.0d0
+      p(:,:,:)= 0.0d0
+      potvals=0.0d0
+
+      do i=1,ndim
+         do j=1,natom
+            idof= calcidof(i,j)
+            if (n .gt. 1) then
+               !---------------------------
+               !generate random numbers for chain
+               errcode_normal = vdrnggaussian(rmethod_normal,stream_normal,n,rp,0.0d0,stdev)!ringpolymer
+               !---------------------------
+               !scale them to have the right standard deviation
+               do k=1, n
+                  lambda=sqrt(transfreqs(idof) + lam(k)**2)
+                  rp(k)= rp(k)/(lambda*sqrt(mass(j)))
+                  potvals=potvals + 0.5d0*mass(j)*lambda**2*rp(k)**2
+               end do
+               !---------------------------
+               !transform to site-local cartesian
+               if (ring) then
+                  if (use_fft) then
+                     call ring_transform_backward_nr(rp, rk(:,idof))
+                  else
+                     call ring_transform_backward(rp, rk(:,idof))
+                  end if
+               else
+                  call linear_transform_backward(rp, rk(:,idof), idof)
+               end if
+            else
+               errcode_normal = vdrnggaussian(rmethod_normal,stream_normal,1,rk(1,:),0.0d0,stdev)!ringpolymer
+               rk(1,idof)= rk(1,idof)/(sqrt(mass(j)*transfreqs(j)))
+            end if
+            errcode_normal = vdrnggaussian(rmethod_normal,stream_normal,n,p(:,i,j),0.0d0,stdev)!momenta
+            p(:,i,j)= p(:,i,j)*sqrt(mass(j))
+         end do
+      end do
+      !---------------------------
+      !transform to global cartesian coordinates
+      do k=1,n
+         x(k,:,:)= reshape(matmul(transpose(hess),rk(k,:)), (/ndim,natom/))
+         x(k,:,:)= x(k,:,:) + transition(:,:)
+      end do
+
+      deallocate(tempx, rp, rk, pk)
+      
+      return
+    end subroutine harmonicsampling
+
+    
   end module general
