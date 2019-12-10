@@ -58,7 +58,7 @@ contains
     double precision::              potvals, ringpot, potdiff
 
 
-    call harmonicsampling(transfreqs, hess, x, p, potvals)
+    call harmonicsampling(x, p, potvals)
 
     ringpot=UM(x)
     potdiff= (ringpot- potvals) 

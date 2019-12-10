@@ -156,6 +156,7 @@ contains
     force(:,:,:)=0.0d0
     if (n .gt. 1) then
        call step_v(dt, xprop, pprop, force, .true.)
+       ! call step_v(dt, ximag, pimag, force, .true.)
        call step_nm_matsubara(dt,xprop,pprop,ximag,pimag ,.true.)
     else
        call step_v(0.5d0*dt, xprop, pprop, force, .true.)
@@ -353,8 +354,10 @@ contains
     implicit none
     integer::          i, j, k, dofi
     double precision:: omegak, omegaplus,omegaminus
-    double precision:: newpir(n, ndim, natom),qr(n, ndim, natom), pir(n, ndim, natom)
-    double precision:: newpii(n, ndim, natom),qi(n, ndim, natom), pii(n, ndim, natom)
+    double precision:: newpir(n, ndim, natom),newqr(n, ndim, natom)
+    double precision:: newpii(n, ndim, natom),newqi(n, ndim, natom)
+    double precision:: qr(n, ndim, natom), pir(n, ndim, natom)
+    double precision:: qi(n, ndim, natom), pii(n, ndim, natom)
     double precision:: x(:,:,:), p(:,:,:),ximag(:,:,:), pimag(:,:,:), time
     double precision:: sinplus, sinminus, cosplus, cosminus
     logical::          transform
@@ -394,32 +397,33 @@ contains
           do k=1,natom
              if (i.eq.1 .and. ring) then
                 newpir(i,j,k)=pir(i,j,k)
-                qr(i,j,k)= qr(i,j,k) + &
-                     pir(i,j,k)*time/beadmass(k,i)
+                newpii(i,j,k)=pii(i,j,k)
+                newqr(i,j,k)= qr(i,j,k)
+                newqi(i,j,k)= qi(i,j,k)
              else
                 omegak= sqrt(mass(k)/beadmass(k,i))*lam(i)
                 omegaplus= 0.5d0*omegak*(1.0d0+sqrt(5.0d0))
                 omegaminus= 0.5d0*omegak*(1.0d0-sqrt(5.0d0))
-                cosplus= cos(omegaplus*time) + cos(omegaminus*time)
-                cosminus= cos(omegaplus*time) - cos(omegaminus*time)
-                sinplus= sin(omegaplus*time) + sin(omegaminus*time)
-                sinminus= sin(omegaplus*time) - sin(omegaminus*time)
-                newpir(i,j,k)= 0.5d0*(pir(i,j,k)*(1.0d0-sqrt(5.0d0))*cosplus &
-                     + 2.0d0*beadmass(k,i)*omegak*qr(i,j,k)*sinminus &
-                     + pii(i,j,k)*(1.0d0-sqrt(5.0d0))*sinplus &
-                     - 2.0d0*beadmass(k,i)*omegak*qi(i,j,k)*cosminus)/sqrt(5.0d0)
-                newpii(i,j,k)= 0.5d0*(-pir(i,j,k)*(1.0d0-sqrt(5.0d0))*sinplus &
-                     + 2.0d0*beadmass(k,i)*omegak*qr(i,j,k)*cosminus &
-                     + pii(i,j,k)*(1.0d0-sqrt(5.0d0))*cosplus &
-                     + 2.0d0*beadmass(k,i)*omegak*qi(i,j,k)*sinminus)/sqrt(5.0d0)
-                qr(i,j,k)= 0.5d0*(qr(i,j,k)*(1.0d0 + sqrt(5.0d0))*cosminus &
-                     + 2.0d0*pir(i,j,k)*sinplus/(beadmass(k,i)*omegak) &
-                     - 2.0d0*pii(i,j,k)*cosplus/(beadmass(k,i)*omegak) &
-                     + qi(i,j,k)*(1.0d0+sqrt(5.0d0))*sinminus)/sqrt(5.0d0)
-                qi(i,j,k)= 0.5d0*(pir(i,j,k)*cosplus/(beadmass(k,i)*omegak) &
-                     - qr(i,j,k)*(1.0d0+sqrt(5.0d0))*sinminus &
-                     + qi(i,j,k)*(1.0d0+sqrt(5.0d0))*cosminus &
-                     + 2.0d0*pii(i,j,k)*sinplus/(beadmass(k,i)*omegak))/sqrt(5.0d0)
+                cosplus= cos(omegaplus*time)
+                cosminus=  cos(omegaminus*time)
+                sinplus= sin(omegaplus*time)
+                sinminus=  sin(omegaminus*time)
+                newpir(i,j,k)= (pir(i,j,k)*(omegaplus*cosplus - omegaminus*cosminus) &
+                     + beadmass(k,i)*omegaplus*omegaminus*qr(i,j,k)*(sinplus-sinminus) &
+                     + pii(i,j,k)*(omegaplus*sinplus - omegaminus*sinminus) &
+                     + beadmass(k,i)*omegaplus*omegaminus*qi(i,j,k)*(-cosplus+ cosminus))/(sqrt(5.0d0)*omegak)
+                newpii(i,j,k)= (pii(i,j,k)*(omegaplus*cosplus - omegaminus*cosminus) &
+                     - beadmass(k,i)*omegaplus*omegaminus*qi(i,j,k)*(-sinplus + sinminus) &
+                     - beadmass(k,i)*omegaplus*omegaminus*qr(i,j,k)*(-cosplus + cosminus) &
+                     - pir(i,j,k)*(omegaplus*sinplus - omegaminus*sinminus))/(sqrt(5.0d0)*omegak)
+                newqr(i,j,k)= (qr(i,j,k)*(-omegaminus*cosplus + omegaplus*cosminus) &
+                     + pir(i,j,k)*(sinplus - sinminus)/beadmass(k,i) &
+                     - pii(i,j,k)*(cosplus - cosminus)/beadmass(k,i) &
+                     + qi(i,j,k)*(-omegaminus*sinplus + omegaplus*sinminus))/(sqrt(5.0d0)*omegak)
+                newqi(i,j,k)= (qr(i,j,k)*(omegaminus*sinplus - omegaplus*sinminus)&
+                     + pir(i,j,k)*(cosplus - cosminus)/beadmass(k,i) &
+                     + qi(i,j,k)*(-omegaminus*cosplus + omegaplus*cosminus) &
+                     + pii(i,j,k)*(sinplus - sinminus)/beadmass(k,i))/(sqrt(5.0d0)*omegak)
              end if
              if (newpir(i,j,k) .ne. newpir(i,j,k)) then
                 write(*,*) "NaN in 1st NM propagation"
@@ -436,34 +440,34 @@ contains
              if (.not. use_fft) then
                 if (ring) then
                    call ring_transform_backward(newpir(:,i,j), p(:,i,j))
-                   call ring_transform_backward(qr(:,i,j), x(:,i,j))
+                   call ring_transform_backward(newqr(:,i,j), x(:,i,j))
                    call ring_transform_backward(newpii(:,i,j), pimag(:,i,j))
-                   call ring_transform_backward(qi(:,i,j), ximag(:,i,j))
+                   call ring_transform_backward(newqi(:,i,j), ximag(:,i,j))
                 else
                    call linear_transform_backward(newpir(:,i,j), p(:,i,j), 0)
-                   call linear_transform_backward(qr(:,i,j), x(:,i,j),dofi)
+                   call linear_transform_backward(newqr(:,i,j), x(:,i,j),dofi)
                    call linear_transform_backward(newpii(:,i,j), pimag(:,i,j), 0)
-                   call linear_transform_backward(qi(:,i,j), ximag(:,i,j),dofi)
+                   call linear_transform_backward(newqi(:,i,j), ximag(:,i,j),dofi)
                 end if
              else
                 if (ring) then
                    call ring_transform_backward_nr(newpir(:,i,j), p(:,i,j))
-                   call ring_transform_backward_nr(qr(:,i,j), x(:,i,j))
+                   call ring_transform_backward_nr(newqr(:,i,j), x(:,i,j))
                    call ring_transform_backward_nr(newpii(:,i,j), pimag(:,i,j))
-                   call ring_transform_backward_nr(qi(:,i,j), ximag(:,i,j))
+                   call ring_transform_backward_nr(newqi(:,i,j), ximag(:,i,j))
                 else
                    call linear_transform_backward_nr(newpir(:,i,j), p(:,i,j),0)
-                   call linear_transform_backward_nr(qr(:,i,j), x(:,i,j),dofi)
+                   call linear_transform_backward_nr(newqr(:,i,j), x(:,i,j),dofi)
                    call linear_transform_backward_nr(newpii(:,i,j), pimag(:,i,j),0)
-                   call linear_transform_backward_nr(qi(:,i,j), ximag(:,i,j),dofi)
+                   call linear_transform_backward_nr(newqi(:,i,j), ximag(:,i,j),dofi)
                 end if
              end if
           end do
        end do
     else
-       x(:,:,:)= qr(:,:,:)
+       x(:,:,:)= newqr(:,:,:)
        p(:,:,:)= newpir(:,:,:)
-       ximag(:,:,:)= qi(:,:,:)
+       ximag(:,:,:)= newqi(:,:,:)
        pimag(:,:,:)= newpii(:,:,:)
     end if
 
