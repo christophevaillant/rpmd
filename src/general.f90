@@ -284,13 +284,14 @@
                   call linear_transform_backward(rp, rk(:,idof), idof)
                end if
             else
-               errcode_normal = vdrnggaussian(rmethod_normal,stream_normal,1,rk(1,:),0.0d0,stdev)!ringpolymer
-               rk(1,idof)= rk(1,idof)/(sqrt(mass(j)*transfreqs(j)))
+               errcode_normal = vdrnggaussian(rmethod_normal,stream_normal,1,rk(1,idof),0.0d0,stdev)!ringpolymer
+               rk(1,idof)= rk(1,idof)/(sqrt(mass(j)*transfreqs(idof)))
             end if
             errcode_normal = vdrnggaussian(rmethod_normal,stream_normal,n,p(:,i,j),0.0d0,stdev)!momenta
             p(:,i,j)= p(:,i,j)*sqrt(mass(j))
          end do
       end do
+
       !---------------------------
       !transform to global cartesian coordinates
       do k=1,n
@@ -302,6 +303,29 @@
       
       return
     end subroutine harmonicsampling
+    
+    !--------------------
+    !zero out the momentum
+    subroutine zeromomentum(p)
+      implicit none
+      double precision, intent(inout):: p(:,:,:)
+      double precision:: totalp
+      integer:: i,j,k
 
+      do i=1,N
+         do j=1, ndim
+            totalp=0.0d0
+            do k=1, natom
+               totalp= totalp + p(i,j,k)
+            end do
+            do k=1,natom
+               p(i,j,k)= p(i,j,k) - totalp/dble(natom)
+            end do
+         end do
+      end do
+      
+      return
+    end subroutine zeromomentum
     
   end module general
+  

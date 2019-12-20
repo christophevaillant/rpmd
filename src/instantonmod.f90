@@ -18,31 +18,34 @@ contains
     double precision, intent(in), optional::  a(:,:),b(:,:)
 
     UM=0.0d0
-    do i=1, N-1, 1
-       UM=UM+ pot(x(i,:,:))
-       do j=1, ndim
-          do k=1, natom
-             UM=UM+ (0.5d0*mass(k)/betan**2)*(x(i+1,j,k)-x(i,j,k))**2
+    if (N.eq.1) then
+       UM=pot(x(1,:,:))
+    else
+       do i=1, N-1, 1
+          UM=UM+ pot(x(i,:,:))
+          do j=1, ndim
+             do k=1, natom
+                UM=UM+ (0.5d0*mass(k)/betan**2)*(x(i+1,j,k)-x(i,j,k))**2
+             end do
           end do
        end do
-    end do
-    UM=UM+ pot(x(N,:,:))
-    if (fixedends) then
-       UM=UM+ pot(a(:,:))+ pot(b(:,:))
-       do j=1, ndim
-          do k=1, natom
-             UM=UM+ (0.5d0*mass(k)/betan**2)*(x(1,j,k)-a(j,k))**2
-             UM=UM+ (0.5d0*mass(k)/betan**2)*(b(j,k)-x(N,j,k))**2
+       UM=UM+ pot(x(N,:,:))
+       if (fixedends) then
+          UM=UM+ pot(a(:,:))+ pot(b(:,:))
+          do j=1, ndim
+             do k=1, natom
+                UM=UM+ (0.5d0*mass(k)/betan**2)*(x(1,j,k)-a(j,k))**2
+                UM=UM+ (0.5d0*mass(k)/betan**2)*(b(j,k)-x(N,j,k))**2
+             end do
           end do
-       end do
-    else if (ring) then
-       do j=1, ndim
-          do k=1, natom
-             UM=UM+ (0.5d0*mass(k)/betan**2)*(x(1,j,k)-x(n,j,k))**2
+       else if (ring) then
+          do j=1, ndim
+             do k=1, natom
+                UM=UM+ (0.5d0*mass(k)/betan**2)*(x(1,j,k)-x(n,j,k))**2
+             end do
           end do
-       end do       
+       end if
     end if
-
     return
   end function UM
 

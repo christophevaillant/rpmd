@@ -171,6 +171,8 @@ program rpmd
   betaleft=1.0d0/(3.167d-6*Tleft)
   betaright=1.0d0/(3.167d-6*Tright)
 
+  if (iproc .eq. 0) write(*,*) "beta, betal, betar=", beta, betaleft, betaright
+
   ncalcs= int(nrep/nproc)
   if (iproc .eq. 0) ncalcs= ncalcs + mod(nrep,nproc)
   write(*,*) iproc, "Energy zero=", V0, "Calcs:", ncalcs
@@ -196,8 +198,8 @@ program rpmd
      p(:,:,:)=0.0d0
      call init_path(x,p, tcf0, weight)
      totalweight=totalweight + weight
-     if (iprint .and. iproc .eq. 0) write(*,*) ii,tcf0(1), weight, totalweight/dble(ii)
      call propagator(x,p,tcf)
+     if (iprint .and. iproc .eq. 0) write(*,*) ii,tcf0(1),tcf(1,ntime), weight, totalweight/dble(ii)
      do i=1, nestim
         do j=1,ntime
            totaltcf(i,j)= totaltcf(i,j) + tcf(i,j)*tcf0(i)*weight
