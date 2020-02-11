@@ -7,7 +7,7 @@
 
     implicit none
 
-    integer::                         NMC, Noutput,nestim, ntime
+    integer::                         NMC, Noutput,nestim, ntime, nonlinear
     integer::                         errcode_poisson, rmethod_poisson
     integer::                         brng_poisson, seed_poisson
     type (vsl_stream_state)::         stream_poisson,stream_normal
