@@ -36,9 +36,13 @@ rpmd_harmonic_heat_ser: POSTPOTFILES= $(OBJDIR)/instantonmod.o $(OBJDIR)/estimat
 
 rpmd_harmonic_heat_par: POSTPOTFILES= $(OBJDIR)/instantonmod.o $(OBJDIR)/estimators_heat.o $(OBJDIR)/verletmodule.o
 
-rpmd_sho_position: POSTPOTFILES= $(OBJDIR)/instantonmod.o $(OBJDIR)/estimators_position.o $(OBJDIR)/verletmodule.o
+rpmd_sho_position_ser: POSTPOTFILES= $(OBJDIR)/instantonmod.o $(OBJDIR)/estimators_position.o $(OBJDIR)/verletmodule.o
 
-rpmd_quartic_position: POSTPOTFILES= $(OBJDIR)/instantonmod.o $(OBJDIR)/estimators_position.o $(OBJDIR)/verletmodule.o
+rpmd_sho_position_par: POSTPOTFILES= $(OBJDIR)/instantonmod.o $(OBJDIR)/estimators_position.o $(OBJDIR)/verletmodule.o
+
+rpmd_quartic_position_ser: POSTPOTFILES= $(OBJDIR)/instantonmod.o $(OBJDIR)/estimators_position.o $(OBJDIR)/verletmodule.o
+
+rpmd_quartic_position_par: POSTPOTFILES= $(OBJDIR)/instantonmod.o $(OBJDIR)/estimators_position.o $(OBJDIR)/verletmodule.o
 
 ###################################################################################
 #Compilation commands for object files
@@ -49,6 +53,9 @@ $(OBJDIR)/%.o: %.f90
 	$(FC) $(INCLUDE) -c $(FFLAGS) $< -o $@
 
 $(OBJDIR)/heattransport_par.o: heattransport_par.f90
+	$(MPIFC) $(INCLUDE) -c $(FFLAGS) $< -o $@
+
+$(OBJDIR)/position_par.o: position_par.f90
 	$(MPIFC) $(INCLUDE) -c $(FFLAGS) $< -o $@
 
 $(OBJDIR)/mkl_dfti.o: ${MKLROOT}/include/mkl_dfti.f90
@@ -76,13 +83,19 @@ rpmd_harmonic_heat_par: $(PREPOTFILES) $(HARMFILES) $$(POSTPOTFILES) $(OBJDIR)/h
 
 ################################
 #harmonic potential:
-rpmd_sho_position: $(PREPOTFILES) $(SHOFILES) $$(POSTPOTFILES) $(OBJDIR)/position_ser.o
+rpmd_sho_position_ser: $(PREPOTFILES) $(SHOFILES) $$(POSTPOTFILES) $(OBJDIR)/position_ser.o
 	$(FC) $(FFLAGS) $(PREPOTFILES) $(SHOFILES) $(POSTPOTFILES) $(OBJDIR)/position_ser.o -o $(BUILDDIR)/$@ $(FLIBS)
+
+rpmd_sho_position_par: $(PREPOTFILES) $(SHOFILES) $$(POSTPOTFILES) $(OBJDIR)/position_par.o
+	$(MPIFC) $(FFLAGS) $(PREPOTFILES) $(SHOFILES) $(POSTPOTFILES) $(OBJDIR)/position_par.o -o $(BUILDDIR)/$@ $(FLIBS)
 
 ################################
 #quartic potential:
-rpmd_quartic_position: $(PREPOTFILES) $(QUARTFILES) $$(POSTPOTFILES) $(OBJDIR)/position_ser.o
+rpmd_quartic_position_ser: $(PREPOTFILES) $(QUARTFILES) $$(POSTPOTFILES) $(OBJDIR)/position_ser.o
 	$(FC) $(FFLAGS) $(PREPOTFILES) $(QUARTFILES) $(POSTPOTFILES) $(OBJDIR)/position_ser.o -o $(BUILDDIR)/$@ $(FLIBS)
+
+rpmd_quartic_position_par: $(PREPOTFILES) $(QUARTFILES) $$(POSTPOTFILES) $(OBJDIR)/position_par.o
+	$(MPIFC) $(FFLAGS) $(PREPOTFILES) $(QUARTFILES) $(POSTPOTFILES) $(OBJDIR)/position_par.o -o $(BUILDDIR)/$@ $(FLIBS)
 
 ###################################################################################
 #Rules for cleanup
