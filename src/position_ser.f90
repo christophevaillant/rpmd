@@ -63,8 +63,6 @@ program rpmd
      write(*,*) "tau=", tau
      write(*,*) "gamma=", gamma
      write(*,*) "Running with Langevin thermostat"
-  else if (thermostat .eq. 3) then
-     write(*,*) "Running with Matsubara propagator"
   end if
 
   if (nonlinear .eq. 0) then
