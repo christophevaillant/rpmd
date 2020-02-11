@@ -14,7 +14,7 @@ program rpmd
   integer::                        i1,i2,j1,j2,idof1,idof2
   integer::                        idof,ii
   integer::                        time1, time2,irate, imax
-  double precision::               answer,sigmaA, weight, massin,Z
+  double precision::               answer,sigmaA, weight, massin,Z,imweight
   double precision::               totalweight,s, ringpot, norm, T, Tleft, Tright
   double precision, allocatable::  x(:,:,:), p(:,:,:), totaltcf(:,:)
   double precision, allocatable::  v(:,:),p0(:,:,:),q0(:,:,:),tcf0(:),averagex(:)
@@ -24,7 +24,7 @@ program rpmd
   integer::                        nout, ldz, lwork, liwork, info
   namelist /MCDATA/ n, beta, NMC, noutput,dt, iprint,imin,tau,&
        nrep, use_fft, thermostat, ndim, natom, xunit,gamma, &
-       outputtcf
+       outputtcf, nonlinear
 
   !-------------------------
   !Set default system parameters then read in namelist
@@ -46,6 +46,7 @@ program rpmd
   ring=.true.
   fixedends=.false.
   outputtcf=.true.
+  nonlinear=0
 
   read(5, nml=MCDATA)
   betan= beta/dble(n)
@@ -64,6 +65,14 @@ program rpmd
      write(*,*) "Running with Langevin thermostat"
   else if (thermostat .eq. 3) then
      write(*,*) "Running with Matsubara propagator"
+  end if
+
+  if (nonlinear .eq. 0) then
+     write(*,*) "Running without nonlinear sampling."
+  else if (nonlinear .eq. 1) then
+     write(*,*) "Running with regular nonlinear sampling."
+  else if (nonlinear .eq. 2) then
+     write(*,*) "Running with averaged nonlinear sampling."
   end if
   ! if (mod(splitbead,n).ne.0) then
   !    write(*,*) "Wrong number of beads for splitting scheme specified:",splitbead, mod(splitbead,n)
@@ -105,11 +114,12 @@ program rpmd
   call init_nm() !allocates ring polymer stuff
   call init_estimators() !allocates estimator stuff
 
-  allocate(x(n,ndim,natom),p(n,ndim,natom))
-  allocate(totaltcf(nestim,ntime), tcf(nestim,ntime), tcf0(nestim), averagex(nestim))
+  allocate(x(n,ndim,natom),p(n,ndim,natom),tcf0(nestim))
+  allocate(totaltcf(nestim,ntime), tcf(nestim,ntime), averagex(nestim))
   totaltcf(:,:)=0.0d0
   totalweight=0.0d0
   averagex(:)=0.0d0
+  tcf0(:)=0.0d0
 
   Z=0.0d0
   do i=1,ndof
@@ -118,32 +128,37 @@ program rpmd
 
   !--------------------
   !Main loop
-  ! open(90,file="sampling.dat")
+
   do ii=1, nrep
      tcf(:,:)=0.0d0
      call init_path(x,p, tcf0, weight)
-     ! write(*,*) ii,x, tcf0
-     totalweight=totalweight + weight
      do i=1,nestim
         averagex(i)= averagex(i)+ weight*tcf0(i)**2
+        tcf(i,1)= tcf0(i)
      end do
-     ! write(*,*)ii,weight, tcf0
-     ! if (iprint .and. mod(ii,Noutput) .eq. 0 ) write(90,*) x
-     if (iprint .and. mod(ii,Noutput) .eq. 0 ) write(*,*) ii,centroid(p(:,1,1)), weight, totalweight/dble(ii), averagex/totalweight
+     if (iprint .and. mod(ii,Noutput) .eq. 0 ) write(*,*) ii,centroid(p(:,1,1)), weight, totalweight/dble(ii), averagex(:)/totalweight
      call propagator(x,p,tcf)
+     totalweight=totalweight + weight
      do i=1, nestim
         do j=1,ntime
-           totaltcf(i,j)= totaltcf(i,j) + tcf(i,j)*tcf0(i)*weight
+           totaltcf(i,j)= totaltcf(i,j) + tcf0(i)*tcf(i,j)*weight
         end do
      end do
   end do
-  ! close(90)
+
   !------------------------------------
   !Finalize and write out
-  write(*,*) "Zero time::", averagex/totalweight
+  write(*,*) "Zero time::", averagex(:)/totalweight
   write(*,*) "Harmonic partition:", Z
   write(*,*) "Totalweight:", totalweight/dble(nrep)
-  totaltcf(:,:)= totaltcf(:,:)/totalweight !/dble(nrep)!
+
+  if (nonlinear.eq.0) then
+     totaltcf(:,:)= totaltcf(:,:)/totalweight
+  else
+     do i=1, nestim/2
+        totaltcf(i,:)= totaltcf(i,:)*averagex(i+3)/(totalweight*totaltcf(i,1))
+     end do
+  end if
 
   if (outputtcf) then
      open(100, file="timecorrelation.dat")

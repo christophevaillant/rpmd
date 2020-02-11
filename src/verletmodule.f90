@@ -24,13 +24,14 @@ contains
   !-----------------------------------------------------
   !-----------------------------------------------------
   !main function for propagating a MD trajectory with Andersen thermostat
-  subroutine propagator(xprop,pprop,tcf,a,b,dbdl)
+  subroutine propagator(xprop,pprop,tcf,a,b,dbdl) !,reweight,imweight
     implicit none
     double precision, intent(inout)::  xprop(:,:,:), pprop(:,:,:)
     double precision, intent(out):: tcf(:,:)
     double precision::              sigma
     double precision, allocatable:: tempp(:), tempv(:), ximag(:,:,:), pimag(:,:,:)
-    double precision, allocatable:: modx(:,:,:), modp(:,:,:), xabs(:,:,:), pabs(:,:,:)
+    double precision, allocatable:: modx(:,:,:), modp(:,:,:)
+    double precision, allocatable:: phase(:,:), mom(:,:)
     integer::              dofi, ii,i,j,k,l,count
     integer (kind=4)::     rkick(1)
     double precision, intent(in), optional::  dbdl(:,:),a(:,:),b(:,:)
@@ -39,12 +40,14 @@ contains
     !Initialize  and allocate
     allocate(tempp(n),tempv(n))
 
+    allocate(phase(ndim,natom),mom(ndim,natom))
     if (thermostat .eq. 3) then
        allocate(ximag(n,ndim,natom),pimag(n,ndim,natom),modx(n,ndim,natom),modp(n,ndim,natom))
-       allocate(xabs(n,ndim,natom), pabs(n,ndim,natom))
+       ! allocate(xabs(n,ndim,natom), pabs(n,ndim,natom), tcfreal(nestim), tcfimag(nestim))
+    ximag(:,:,:)=0.0d0
+    pimag(:,:,:)=0.0d0
     end if
     count=0
-    tcf(:,:)=0.0d0
     if (thermostat .eq. 1) then
        errcode_poisson = virngpoisson( rmethod_poisson, stream_poisson, 1, rkick(1), dble(Noutput))
     else if (thermostat .eq. 2) then
@@ -56,10 +59,10 @@ contains
           end do
        end do
     end if
-    ximag(:,:,:)=0.0d0
-    pimag(:,:,:)=0.0d0
 
-    do ii=1, NMC, 1
+    mom(:,:)=0.0d0
+    phase(:,:)=0.0d0
+    do ii=2, NMC, 1
        !----------------------------------------
        !Deal with thermostats
        if (thermostat.eq.1) then !andersen thermostat
@@ -110,13 +113,15 @@ contains
        !----------------------------------------
        !Calculate the estimator for this step
        if (i .gt. imin) then
-             call estimator(xprop, pprop, tcf(:,ii))
+          call estimator(xprop, pprop,tcf(:,ii))
        end if
        call pot_thermostat(xprop,pprop)
     end do
+
     deallocate(tempv, tempp)
+    deallocate(mom,phase)
     if (thermostat .eq. 2) deallocate(c1,c2)
-    if (thermostat .eq. 3) deallocate(ximag,pimag, modx,modp, xabs, pabs)
+    ! if (thermostat .eq. 3) deallocate(ximag,pimag, modx,modp, xabs, pabs, tcfreal, tcfimag)
     !TODO: add estimator_finalize
     return
   end subroutine propagator
@@ -359,7 +364,7 @@ contains
     double precision:: qr(n, ndim, natom), pir(n, ndim, natom)
     double precision:: qi(n, ndim, natom), pii(n, ndim, natom)
     double precision:: x(:,:,:), p(:,:,:),ximag(:,:,:), pimag(:,:,:), time
-    double precision:: sinplus, sinminus, cosplus, cosminus
+    double precision:: sinplus, sinminus, cosplus, cosminus, sink,cosk
     logical::          transform
 
     do i=1,ndim
@@ -398,32 +403,45 @@ contains
              if (i.eq.1 .and. ring) then
                 newpir(i,j,k)=pir(i,j,k)
                 newpii(i,j,k)=pii(i,j,k)
-                newqr(i,j,k)= qr(i,j,k)
-                newqi(i,j,k)= qi(i,j,k)
+                newqr(i,j,k)= qr(i,j,k) + time*pir(i,j,k)/beadmass(k,i)
+                newqi(i,j,k)= qi(i,j,k) + time*pii(i,j,k)/beadmass(k,i)
              else
                 omegak= sqrt(mass(k)/beadmass(k,i))*lam(i)
-                omegaplus= 0.5d0*omegak*(1.0d0+sqrt(5.0d0))
-                omegaminus= 0.5d0*omegak*(1.0d0-sqrt(5.0d0))
-                cosplus= cos(omegaplus*time)
-                cosminus=  cos(omegaminus*time)
-                sinplus= sin(omegaplus*time)
-                sinminus=  sin(omegaminus*time)
-                newpir(i,j,k)= (pir(i,j,k)*(omegaplus*cosplus - omegaminus*cosminus) &
-                     + beadmass(k,i)*omegaplus*omegaminus*qr(i,j,k)*(sinplus-sinminus) &
-                     + pii(i,j,k)*(omegaplus*sinplus - omegaminus*sinminus) &
-                     + beadmass(k,i)*omegaplus*omegaminus*qi(i,j,k)*(-cosplus+ cosminus))/(sqrt(5.0d0)*omegak)
-                newpii(i,j,k)= (pii(i,j,k)*(omegaplus*cosplus - omegaminus*cosminus) &
-                     - beadmass(k,i)*omegaplus*omegaminus*qi(i,j,k)*(-sinplus + sinminus) &
-                     - beadmass(k,i)*omegaplus*omegaminus*qr(i,j,k)*(-cosplus + cosminus) &
-                     - pir(i,j,k)*(omegaplus*sinplus - omegaminus*sinminus))/(sqrt(5.0d0)*omegak)
-                newqr(i,j,k)= (qr(i,j,k)*(-omegaminus*cosplus + omegaplus*cosminus) &
-                     + pir(i,j,k)*(sinplus - sinminus)/beadmass(k,i) &
-                     - pii(i,j,k)*(cosplus - cosminus)/beadmass(k,i) &
-                     + qi(i,j,k)*(-omegaminus*sinplus + omegaplus*sinminus))/(sqrt(5.0d0)*omegak)
-                newqi(i,j,k)= (qr(i,j,k)*(omegaminus*sinplus - omegaplus*sinminus)&
-                     + pir(i,j,k)*(cosplus - cosminus)/beadmass(k,i) &
-                     + qi(i,j,k)*(-omegaminus*cosplus + omegaplus*cosminus) &
-                     + pii(i,j,k)*(sinplus - sinminus)/beadmass(k,i))/(sqrt(5.0d0)*omegak)
+                ! omegaplus= 0.5d0*omegak*(1.0d0+sqrt(5.0d0))
+                ! omegaminus= 0.5d0*omegak*(1.0d0-sqrt(5.0d0))
+                ! cosplus= cos(omegaplus*time)
+                ! cosminus=  cos(omegaminus*time)
+                ! sinplus= sin(omegaplus*time)
+                ! sinminus=  sin(omegaminus*time)
+                ! cosk= cos(0.5d0*sqrt(3.0d0)*omegak*time)
+                ! sink= sin(0.5d0*sqrt(3.0d0)*omegak*time)
+                !Wick rotation
+                newpir(i,j,k)= (1.0d0 - omegak*time)*pir(i,j,k) +&
+                     beadmass(k,i)*omegak**2*time*qr(i,j,k)
+                newqr(i,j,k)= time*pir(i,j,k)/beadmass(k,i) +&
+                     (1.0d0 - omegak*time)*qr(i,j,k)
+                !Real time only
+                ! newpir(i,j,k)= (pir(i,j,k)*(omegaplus*cosplus - omegaminus*cosminus) &
+                !      + beadmass(k,i)*omegaplus*omegaminus*qr(i,j,k)*(sinplus-sinminus))/(sqrt(5.0d0)*omegak)
+                ! newqr(i,j,k)= (qr(i,j,k)*(-omegaminus*cosplus + omegaplus*cosminus) &
+                !      + pir(i,j,k)*(sinplus - sinminus)/beadmass(k,i))/(sqrt(5.0d0)*omegak)
+                !Full complex propagation
+                ! newpir(i,j,k)= (pir(i,j,k)*(omegaplus*cosplus - omegaminus*cosminus) &
+                !      + beadmass(k,i)*omegaplus*omegaminus*qr(i,j,k)*(sinplus-sinminus) &
+                !      + pii(i,j,k)*(omegaplus*sinplus - omegaminus*sinminus) &
+                !      + beadmass(k,i)*omegaplus*omegaminus*qi(i,j,k)*(-cosplus+ cosminus))/(sqrt(5.0d0)*omegak)
+                ! newpii(i,j,k)= (pii(i,j,k)*(omegaplus*cosplus - omegaminus*cosminus) &
+                !      - beadmass(k,i)*omegaplus*omegaminus*qi(i,j,k)*(-sinplus + sinminus) &
+                !      - beadmass(k,i)*omegaplus*omegaminus*qr(i,j,k)*(-cosplus + cosminus) &
+                !      - pir(i,j,k)*(omegaplus*sinplus - omegaminus*sinminus))/(sqrt(5.0d0)*omegak)
+                ! newqr(i,j,k)= (qr(i,j,k)*(-omegaminus*cosplus + omegaplus*cosminus) &
+                !      + pir(i,j,k)*(sinplus - sinminus)/beadmass(k,i) &
+                !      - pii(i,j,k)*(cosplus - cosminus)/beadmass(k,i) &
+                !      + qi(i,j,k)*(-omegaminus*sinplus + omegaplus*sinminus))/(sqrt(5.0d0)*omegak)
+                ! newqi(i,j,k)= (qr(i,j,k)*(omegaminus*sinplus - omegaplus*sinminus)&
+                !      + pir(i,j,k)*(cosplus - cosminus)/beadmass(k,i) &
+                !      + qi(i,j,k)*(-omegaminus*cosplus + omegaplus*cosminus) &
+                !      + pii(i,j,k)*(sinplus - sinminus)/beadmass(k,i))/(sqrt(5.0d0)*omegak)
              end if
              if (newpir(i,j,k) .ne. newpir(i,j,k)) then
                 write(*,*) "NaN in 1st NM propagation"
