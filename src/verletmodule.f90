@@ -105,7 +105,7 @@ contains
        !Take a step
        if (thermostat .eq. 2) then !langevin thermostat
           call time_step_ffpile(xprop, pprop)
-       else if (thermostat .eq.0) then
+       else
           call time_step(xprop, pprop) !no thermostat
        end if
        !----------------------------------------

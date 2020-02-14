@@ -35,7 +35,7 @@ program rpmd
 
   namelist /MCDATA/ n, beta, NMC, noutput,dt, iprint,imin,tau,&
        nrep, use_fft, thermostat, ndim, natom, xunit,gamma, &
-       outputtcf, latticemass, deltaT, convection
+       outputtcf, latticemass, deltaT, convection, nonlinear
 
   !initialize MPI
   nproc=0
@@ -65,14 +65,14 @@ program rpmd
   imin=0
   tau=1.0d0
   gamma=1.0d0
-  nestim=2
   ring=.true.
   fixedends=.false.
   latticemass=.false.
   deltaT=0.0d0
   outputtcf=.true.
   convection=.false.
-
+  nonlinear=0
+  
   !-----------------------------------------
   !Read in parameters for processor 0 and distribute to all processors
   if (iproc .eq. 0) then
@@ -93,6 +93,14 @@ program rpmd
         write(*,*) "gamma=", gamma
         write(*,*) "Running with Langevin thermostat"
      end if
+     if (nonlinear .eq. 0) then
+        write(*,*) "Running without nonlinear sampling."
+     else if (nonlinear .eq. 1) then
+        write(*,*) "Running with regular nonlinear sampling."
+     else if (nonlinear .eq. 2) then
+        write(*,*) "Running with averaged nonlinear sampling."
+     end if
+
   end if
 
   call MPI_Bcast(nrep, 1, MPI_INTEGER, 0,MPI_COMM_WORLD, ierr)
@@ -102,6 +110,7 @@ program rpmd
   call MPI_Bcast(imin, 1, MPI_INTEGER, 0,MPI_COMM_WORLD, ierr)
   call MPI_Bcast(ndim, 1, MPI_INTEGER, 0,MPI_COMM_WORLD, ierr)
   call MPI_Bcast(natom, 1, MPI_INTEGER, 0,MPI_COMM_WORLD, ierr)
+  call MPI_Bcast(nonlinear, 1, MPI_INTEGER, 0,MPI_COMM_WORLD, ierr)
   call MPI_Bcast(convection, 1, MPI_LOGICAL, 0,MPI_COMM_WORLD, ierr)
   call MPI_Bcast(use_fft, 1, MPI_LOGICAL, 0,MPI_COMM_WORLD, ierr)
 
@@ -184,6 +193,7 @@ program rpmd
   call init_nm() !allocates ring polymer stuff
   call init_estimators() !allocates estimator stuff
 
+  write(*,*)iproc, nestim
   allocate(x(n,ndim,natom),p(n,ndim,natom))
   allocate(totaltcf(nestim,ntime), tcf(nestim,ntime), tcf0(nestim))
   totaltcf(:,:)=0.0d0
@@ -198,7 +208,11 @@ program rpmd
      p(:,:,:)=0.0d0
      call init_path(x,p, tcf0, weight)
      totalweight=totalweight + weight
+     do i=1, nestim
+           totaltcf(i,1)= totaltcf(i,1) + tcf0(i)**2*weight
+     end do
      call propagator(x,p,tcf)
+     ! write(*,*) iproc,x, p, tcf0(1), weight
      if (iprint .and. iproc .eq. 0) write(*,*) ii,tcf0(1),tcf(1,ntime), weight, totalweight/dble(ii)
      do i=1, nestim
         do j=1,ntime

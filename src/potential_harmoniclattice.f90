@@ -178,15 +178,15 @@ contains
     a2= sqrt(1.0d0- a1**2)
     errcode_normal = vdrnggaussian(rmethod_normal,stream_normal,totdof,newp,0.0d0,1.0d0)
     !middle atoms
-    ! do i=1, ndim
-    !    do j=2, natom-1
-    !       idof= calcidof(i,j)
-    !       do k=1,n
-    !          p(k,i,j)= (a1**2)*p(k,i,j) + &
-    !               sqrt(mass(j)/beta)*a2*sqrt(1.0+a1**2)*newp((idof-1)*ndof +k)
-    !       end do
-    !    end do
-    ! end do
+    do i=1, ndim
+       do j=2, natom-1
+          idof= calcidof(i,j)
+          do k=1,n
+             p(k,i,j)= (a1**2)*p(k,i,j) + &
+                  sqrt(mass(j)/beta)*a2*sqrt(1.0+a1**2)*newp((idof-1)*ndof +k)
+          end do
+       end do
+    end do
 
     do i=1, ndim
        !left reservoir

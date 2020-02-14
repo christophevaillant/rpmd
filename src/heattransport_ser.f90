@@ -27,7 +27,7 @@ program rpmd
   logical::                        latticemass
   namelist /MCDATA/ n, beta, NMC, noutput,dt, iprint,imin,tau,&
        nrep, use_fft, thermostat, ndim, natom, xunit,gamma, &
-       outputtcf, latticemass, deltaT, convection
+       outputtcf, latticemass, deltaT, convection, nonlinear
 
   !-------------------------
   !Set default system parameters then read in namelist
@@ -53,6 +53,7 @@ program rpmd
   deltaT=1.0d0
   outputtcf=.true.
   convection=.false.
+  nonlinear=0
 
   read(5, nml=MCDATA)
   betan= beta/dble(n)
@@ -69,6 +70,13 @@ program rpmd
      write(*,*) "tau=", tau
      write(*,*) "gamma=", gamma
      write(*,*) "Running with Langevin thermostat"
+  end if
+  if (nonlinear .eq. 0) then
+     write(*,*) "Running without nonlinear sampling."
+  else if (nonlinear .eq. 1) then
+     write(*,*) "Running with regular nonlinear sampling."
+  else if (nonlinear .eq. 2) then
+     write(*,*) "Running with averaged nonlinear sampling."
   end if
   call V_init(0)
   ndof= ndim*natom

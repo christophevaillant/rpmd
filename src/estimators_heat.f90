@@ -5,11 +5,10 @@ module estimators
 
   implicit none
 
-  public:: init_estimators, estimator, finalize_estimators,init_path, whichestim, convection
+  public:: init_estimators, estimator, finalize_estimators,init_path, convection
 
   private
 
-  logical, allocatable:: whichestim(:)
   logical:: convection
 
 contains
@@ -20,15 +19,18 @@ contains
     !TODO: estimatormod- implement list of estimators
 
     if (outputfbar) open(200,file="fbar.dat")
-
+    ! if (nonlinear .eq. 0) then
+    !    nestim=2
+    ! else
+    !    nestim=4
+    ! end if
+    nestim=2
     ntime= NMC/Noutput
-    allocate(whichestim(nestim))
 
   end subroutine init_estimators
 
   subroutine finalize_estimators()
     implicit none
-    deallocate(whichestim)
   end subroutine finalize_estimators
 
   subroutine estimator(x,p,tcfval)
@@ -37,7 +39,7 @@ contains
     double precision, intent(out):: tcfval(:)
     double precision:: s, energy, prob, stdev, q1, q2
     double precision:: centroidxi, centroidpi, centroidxj, centroidpj
-    integer:: i,j,k, idof
+    integer:: i,j,k,l, idof
 
     ! tcfval(1)=0.0d0
     ! do i=1, natom
@@ -61,23 +63,51 @@ contains
     !    if (convection) tcfval(1)= tcfval(1)+ centroidpi*siteenergy(p,x,i,j)/mass(i)
     ! end do
 
-    tcfval(1)=0.0d0
-    do i=1,natom
-       energy=0.0d0
-       do j=1,n
-          if (i .lt. natom) energy= energy + &
-               0.5d0*(x(j,1,i+1) - x(j,1,i))*interforce(x,i,j)*(p(j,1,i) + p(j,1,i+1))/mass(i)
-          if (i .gt. 1) energy= energy + &
-               0.5d0*(x(j,1,i) - x(j,1,i-1))*interforce(x,i-1,j)*(p(j,1,i-1) + p(j,1,i))/mass(i)
-          if (convection) energy= energy+ p(j,1,i)*siteenergy(p,x,i,j)/mass(i)
+    tcfval(:)=0.0d0
+    if (nonlinear .eq. 0 .or. n .eq. 1) then
+       do i=1,natom
+          energy=0.0d0
+          do j=1,n
+             if (i .lt. natom) energy= energy + &
+                  0.5d0*(x(j,1,i+1) - x(j,1,i))*interforce(x,i,j)*(p(j,1,i) + p(j,1,i+1))/mass(i)
+             if (i .gt. 1) energy= energy + &
+                  0.5d0*(x(j,1,i) - x(j,1,i-1))*interforce(x,i-1,j)*(p(j,1,i-1) + p(j,1,i))/mass(i)
+             if (convection) energy= energy+ p(j,1,i)*siteenergy(p,x,i,j)/mass(i)
+          end do
+          tcfval(1)= tcfval(1)+energy/dble(N)
        end do
-       tcfval(1)= tcfval(1)+energy/dble(N)
-    end do
+       tcfval(2)= tcfval(1)
+    else if (nonlinear.eq. 1) then
+       !TODO: convection needs fixing because it is only a squared operator rather than cubed
+       do i=1,natom
+          energy=0.0d0
+          do j=1,n
+             if (i .lt. natom) energy= energy + &
+                  0.5d0*(x(j,1,i+1) - x(j,1,i))*interforce(x,i,j)*(p(j,1,i) + p(j,1,i+1))/mass(i)
+             if (i .gt. 1) energy= energy + &
+                  0.5d0*(x(j,1,i) - x(j,1,i-1))*interforce(x,i-1,j)*(p(j,1,i-1) + p(j,1,i))/mass(i)
+             ! if (convection) energy= energy+ p(j,1,i)*siteenergy(p,x,i,j)/mass(i)
+             do k=j,n
+                if (i .lt. natom) energy= energy + &
+                     (x(j,1,i+1) - x(j,1,i))*interforce(x,i,k)*(p(k,1,i) + p(k,1,i+1))/mass(i)
+                if (i .gt. 1) energy= energy + &
+                     (x(j,1,i) - x(j,1,i-1))*interforce(x,i-1,k)*(p(k,1,i-1) + p(k,1,i))/mass(i)
+                ! if (convection) energy= energy+ 2.0d0*p(k,1,i)*siteenergy(p,x,i,k)/mass(i)
+                do l=k,n
+                   if (i .lt. natom) energy= energy + &
+                        3.0d0*(x(j,1,i+1) - x(j,1,i))*interforce(x,i,k)*(p(l,1,i) + p(l,1,i+1))/mass(i)
+                   if (i .gt. 1) energy= energy + &
+                        3.0d0*(x(j,1,i) - x(j,1,i-1))*interforce(x,i-1,k)*(p(l,1,i-1) + p(l,1,i))/mass(i)
+                end do
+             end do
+          end do
+          tcfval(1)= tcfval(1)+energy/dble(N**3)
+       end do
+       tcfval(2)= tcfval(1)
 
-    tcfval(2)= tcfval(1)
+    end if
 
-
-    ! write(*,*) tcfval(1)
+    ! write(*,*) x(1,1,1), p(1,1,1),tcfval(1)
     return
   end subroutine estimator
 
