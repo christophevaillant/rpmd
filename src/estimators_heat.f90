@@ -24,7 +24,7 @@ contains
     ! else
     !    nestim=4
     ! end if
-    nestim=2
+    nestim=3
     ntime= NMC/Noutput
 
   end subroutine init_estimators
@@ -68,16 +68,16 @@ contains
        do i=1,natom
           energy=0.0d0
           do j=1,n
-             ! if (i .lt. natom) energy= energy + &
-             !      0.5d0*(x(j,1,i+1) - x(j,1,i))*interforce(x,i,j)*(p(j,1,i) + p(j,1,i+1))/mass(i)
-             ! if (i .gt. 1) energy= energy + &
-             !      0.5d0*(x(j,1,i) - x(j,1,i-1))*interforce(x,i-1,j)*(p(j,1,i-1) + p(j,1,i))/mass(i)
-             ! if (convection) energy= energy+ p(j,1,i)*siteenergy(p,x,i,j)/mass(i)
-             tcfval(1)= tcfval(1) + siteenergy(p,x,i,j)/dble(N)
+             if (i .lt. natom) energy= energy + &
+                  0.5d0*(x(j,1,i+1) - x(j,1,i))*interforce(x,i,j)*(p(j,1,i) + p(j,1,i+1))/mass(i)
+             if (i .gt. 1) energy= energy + &
+                  0.5d0*(x(j,1,i) - x(j,1,i-1))*interforce(x,i-1,j)*(p(j,1,i-1) + p(j,1,i))/mass(i)
+             if (convection) energy= energy+ p(j,1,i)*siteenergy(p,x,i,j)/mass(i)
+             tcfval(2)= tcfval(2) + siteenergy(p,x,i,j)/dble(N)
           end do
-          ! tcfval(1)= tcfval(1)+energy/dble(N)
+          tcfval(1)= tcfval(1)+energy/dble(N)
        end do
-       tcfval(2)= tcfval(1)
+       tcfval(3)= tcfval(2)
     else if (nonlinear.eq. 1) then
        !TODO: convection needs fixing because it is only a squared operator rather than cubed
        do i=1,natom
@@ -137,7 +137,7 @@ contains
     !work out initial current
     ! write(*,*) "----------------------------"
     call estimator(x,p,factors)
-    factors(2)=1.0d0
+    factors(2)=factors(1)
 
     return
   end subroutine init_path
