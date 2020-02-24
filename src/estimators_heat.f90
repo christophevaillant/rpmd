@@ -137,7 +137,7 @@ contains
     !work out initial current
     ! write(*,*) "----------------------------"
     call estimator(x,p,factors)
-    factors(2)=factors(1)
+    factors(2)=abs(factors(1))
 
     return
   end subroutine init_path
